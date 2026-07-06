@@ -1,0 +1,10 @@
+Eckl Eco Technics - Materialverwaltung V0.6.9
+
+Für Render bitte zuerst lesen:
+
+RENDER_DEPLOY_ANLEITUNG.md
+
+Für lokalen Test wie bisher:
+0_NODEJS_PRUEFEN.bat
+1_PAKETE_INSTALLIEREN.bat
+2_DESKTOP_APP_TESTEN.bat

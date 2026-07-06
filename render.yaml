@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: eckl-materialverwaltung
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: ECKL_APP_MODE
+        value: render
+      - key: DATABASE_URL
+        sync: false

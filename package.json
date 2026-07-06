@@ -1,0 +1,25 @@
+{
+  "name": "eckl-eco-technics-materialverwaltung",
+  "version": "0.6.9",
+  "description": "Eckl Eco Technics Materialverwaltung V0.6.9 - Render Online-Probeserver",
+  "main": "main.js",
+  "type": "commonjs",
+  "author": "Eckl Eco Technics",
+  "scripts": {
+    "start": "node server.js",
+    "desktop": "electron .",
+    "pack:win": "electron-packager . \"Eckl Eco Technics - Materialverwaltung\" --platform=win32 --arch=x64 --out=release --overwrite --asar --prune=true --ignore=\"^/release\" --ignore=\"^/node_modules/.cache\"",
+    "render:start": "node server.js",
+    "render:build": "npm install --omit=dev"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-packager": "^17.1.2"
+  },
+  "productName": "Eckl Eco Technics - Materialverwaltung"
+}
