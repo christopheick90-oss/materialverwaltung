@@ -1,20 +1,11 @@
-# Render Deploy Anleitung V0.7.0
+# Render Deploy Anleitung V0.7.1
 
-## 1. Dateien in GitHub aktualisieren
+1. ZIP entpacken.
+2. Inhalt des Ordners in GitHub hochladen, nicht die ZIP selbst.
+3. In Render Web Service öffnen.
+4. Settings → Build & Deploy:
 
-Den Inhalt dieses Ordners in dein GitHub Repository hochladen.
-
-Wichtig: Falls im Repository noch `package-lock.json` liegt, bitte löschen oder den Render Build Command unten verwenden. Die alte Lock-Datei kann Render blockieren.
-
-## 2. Render Build Command ändern
-
-In Render:
-
-```text
-Dashboard → dein Web Service → Settings → Build & Deploy
-```
-
-Build Command auf diesen Wert setzen:
+Build Command:
 
 ```text
 rm -f package-lock.json && npm install --omit=dev --no-audit --no-fund
@@ -32,14 +23,21 @@ Health Check Path:
 /healthz
 ```
 
-## 3. Environment Variables
+5. Environment Variables:
 
 ```text
 NODE_VERSION=22
 ECKL_APP_MODE=render
-DATABASE_URL=<deine Supabase-Datenbankadresse>
+DATABASE_URL=<deine Postgres URL>
 ```
 
-## 4. Danach
+6. Manual Deploy → Clear build cache & deploy.
 
-Auf **Manual Deploy → Clear build cache & deploy** klicken.
+Wenn die Hauptadresse „Not Found“ zeigt, zuerst diese Links testen:
+
+```text
+/healthz
+/debug/public
+```
+
+`/debug/public` muss mindestens `index.html`, `app.js`, `styles.css` und `logo.png` anzeigen.

@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.7.0",
-  "description": "Eckl Eco Technics Materialverwaltung V0.7.0 - Render Build Fix",
+  "version": "0.7.1",
+  "description": "Eckl Eco Technics Materialverwaltung V0.7.1 - Render Not Found Fix",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

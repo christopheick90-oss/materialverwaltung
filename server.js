@@ -128,7 +128,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.7.0';
+const PROGRAM_VERSION = '0.7.1';
 const KONSI_LOCATION = 'Garage';
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
 const DEFAULT_STANDARD_STRENGTHS = ['1 mm','1,5 mm','2 mm','3 mm','4 mm','5 mm','6 mm','8 mm','10 mm'];
@@ -1425,6 +1425,22 @@ app.use((req, res, next) => {
 });
 app.get('/api/version', (_req, res) => res.json({ appName: APP_NAME, version: PROGRAM_VERSION, serverMode: SERVER_MODE, port: PORT, localUrl: `http://localhost:${PORT}`, externalUrl: cleanText(process.env.RENDER_EXTERNAL_URL || ''), storage: pgPool ? 'postgres' : 'file', networkUrls: networkUrls() }));
 app.get('/api/server-info', (_req, res) => res.json({ ok: true, appName: APP_NAME, version: PROGRAM_VERSION, serverMode: SERVER_MODE, port: PORT, localUrl: `http://localhost:${PORT}`, externalUrl: cleanText(process.env.RENDER_EXTERNAL_URL || ''), storage: pgPool ? 'postgres' : 'file', networkIps: networkAddresses(), networkUrls: networkUrls(), serverTime: nowIso() }));
+
+function sendFrontend(_req, res) {
+  res.sendFile(path.join(publicDir, 'index.html'));
+}
+
+app.get('/', sendFrontend);
+app.get('/index.html', sendFrontend);
+app.get('/login', sendFrontend);
+app.get('/app', sendFrontend);
+app.get('/material', sendFrontend);
+
+app.get('/debug/public', (_req, res) => {
+  const files = fs.existsSync(publicDir) ? fs.readdirSync(publicDir).sort() : [];
+  res.json({ ok: true, version: PROGRAM_VERSION, publicDir, files });
+});
+
 app.use(express.static(publicDir));
 
 app.post('/api/login', (req, res) => {

@@ -1,12 +1,10 @@
-# Eckl Eco Technics - Materialverwaltung V0.7.0
+# Eckl Eco Technics - Materialverwaltung V0.7.1
 
-Render Online-Probeserver Build-Fix.
+Render Online-Version mit Not-Found-Fix.
 
-Wichtig für Render:
+## Wichtig für Render
 
-- `package-lock.json` wurde entfernt, weil die alte Datei falsche interne Paket-URLs enthalten konnte.
-- `.npmrc` erzwingt die öffentliche npm Registry.
-- Render Build Command:
+Build Command:
 
 ```text
 rm -f package-lock.json && npm install --omit=dev --no-audit --no-fund
@@ -18,7 +16,7 @@ Start Command:
 node server.js
 ```
 
-Health Check:
+Health Check Path:
 
 ```text
 /healthz
@@ -29,5 +27,15 @@ Environment Variables:
 ```text
 NODE_VERSION=22
 ECKL_APP_MODE=render
-DATABASE_URL=<Supabase Connection String>
+DATABASE_URL=<Render PostgreSQL External Database URL oder funktionierende Postgres URL>
+```
+
+## Prüfen
+
+Nach dem Deploy testen:
+
+```text
+https://deine-render-adresse.onrender.com/healthz
+https://deine-render-adresse.onrender.com/debug/public
+https://deine-render-adresse.onrender.com/
 ```
