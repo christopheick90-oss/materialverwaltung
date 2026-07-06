@@ -128,7 +128,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.6.9';
+const PROGRAM_VERSION = '0.7.0';
 const KONSI_LOCATION = 'Garage';
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
 const DEFAULT_STANDARD_STRENGTHS = ['1 mm','1,5 mm','2 mm','3 mm','4 mm','5 mm','6 mm','8 mm','10 mm'];

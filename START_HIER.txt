@@ -1,10 +1,6 @@
-Eckl Eco Technics - Materialverwaltung V0.6.9
+V0.7.0 Render Build Fix
 
-Für Render bitte zuerst lesen:
-
-RENDER_DEPLOY_ANLEITUNG.md
-
-Für lokalen Test wie bisher:
-0_NODEJS_PRUEFEN.bat
-1_PAKETE_INSTALLIEREN.bat
-2_DESKTOP_APP_TESTEN.bat
+Für Render bitte RENDER_DEPLOY_ANLEITUNG.md lesen.
+Wichtigster Fix: Build Command auf
+rm -f package-lock.json && npm install --omit=dev --no-audit --no-fund
+setzen.

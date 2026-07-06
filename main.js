@@ -134,7 +134,7 @@ button.primary{background:var(--red);color:#fff;border:0;padding:12px 15px;curso
 </style>
 </head>
 <body>
-  <div class="header"><h1>Eckl Eco Technics - Materialverwaltung</h1><div>Client verbinden · Version 0.6.9</div></div>
+  <div class="header"><h1>Eckl Eco Technics - Materialverwaltung</h1><div>Client verbinden · Version 0.7.0</div></div>
   <div class="card">
     <h2>Server-Adresse eingeben</h2>
     <p>Diese Client-EXE kann jetzt schon auf den anderen PC kopiert werden. Die Server-IP kann später eingetragen werden.</p>

@@ -1,23 +1,33 @@
-# Eckl Eco Technics - Materialverwaltung V0.6.9
+# Eckl Eco Technics - Materialverwaltung V0.7.0
 
-## Render Online-Probeserver
+Render Online-Probeserver Build-Fix.
 
-Diese Version ist vorbereitet für einen Online-Test über Render.
+Wichtig für Render:
 
-Neu:
-
-- Render-kompatibler Port über `process.env.PORT`
-- `/healthz` Health Check
-- `render.yaml` für Render Blueprint
-- optionale Online-Datenbank über `DATABASE_URL`
-- Postgres-Speicher als zentrale Datenbank
-- Client kann sich mit der Render-URL verbinden
-- Version 0.6.9
-
-Weitere Schritte stehen in:
+- `package-lock.json` wurde entfernt, weil die alte Datei falsche interne Paket-URLs enthalten konnte.
+- `.npmrc` erzwingt die öffentliche npm Registry.
+- Render Build Command:
 
 ```text
-RENDER_DEPLOY_ANLEITUNG.md
+rm -f package-lock.json && npm install --omit=dev --no-audit --no-fund
 ```
 
-Master-Design bleibt unverändert.
+Start Command:
+
+```text
+node server.js
+```
+
+Health Check:
+
+```text
+/healthz
+```
+
+Environment Variables:
+
+```text
+NODE_VERSION=22
+ECKL_APP_MODE=render
+DATABASE_URL=<Supabase Connection String>
+```

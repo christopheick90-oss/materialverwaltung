@@ -1,81 +1,45 @@
-# Render Online-Probeserver · Eckl Materialverwaltung V0.6.9
+# Render Deploy Anleitung V0.7.0
 
-Diese Version ist für einen kostenlosen Online-Probelauf auf Render vorbereitet.
+## 1. Dateien in GitHub aktualisieren
 
-## Wichtig
+Den Inhalt dieses Ordners in dein GitHub Repository hochladen.
 
-Die App braucht online eine Datenbank. Ohne `DATABASE_URL` würde Render nur eine Datei im Container schreiben. Das ist auf Render Free nicht dauerhaft sicher.
+Wichtig: Falls im Repository noch `package-lock.json` liegt, bitte löschen oder den Render Build Command unten verwenden. Die alte Lock-Datei kann Render blockieren.
 
-Empfohlen für den kostenlosen Probelauf:
+## 2. Render Build Command ändern
 
-- Render Web Service Free für den Server
-- Supabase Free oder Render Postgres als Postgres-Datenbank
-
-Hinweis: Render Free Web Services schlafen nach Inaktivität ein. Beim ersten Aufruf kann das Aufwachen ca. eine Minute dauern.
-
-## Dateien
-
-- `render.yaml` = Render Blueprint / automatische Render-Einstellung
-- `server.js` = nutzt online automatisch `process.env.PORT`
-- `DATABASE_URL` = Postgres-Verbindung für zentrale Online-Datenbank
-- `/healthz` = Health Check für Render
-
-## Render-Webservice erstellen
-
-1. Diesen Ordner in ein GitHub-Repository hochladen.
-2. Bei Render anmelden.
-3. `New` → `Web Service` wählen.
-4. GitHub-Repository verbinden.
-5. Einstellungen:
+In Render:
 
 ```text
-Runtime: Node
-Build Command: npm install --omit=dev
-Start Command: node server.js
-Plan: Free
-Health Check Path: /healthz
+Dashboard → dein Web Service → Settings → Build & Deploy
 ```
 
-6. Environment Variables setzen:
+Build Command auf diesen Wert setzen:
+
+```text
+rm -f package-lock.json && npm install --omit=dev --no-audit --no-fund
+```
+
+Start Command:
+
+```text
+node server.js
+```
+
+Health Check Path:
+
+```text
+/healthz
+```
+
+## 3. Environment Variables
 
 ```text
 NODE_VERSION=22
 ECKL_APP_MODE=render
-DATABASE_URL=<Postgres-Verbindungsadresse>
+DATABASE_URL=<deine Supabase-Datenbankadresse>
 ```
 
-7. Deploy starten.
-8. Nach dem Deploy bekommt ihr eine Adresse wie:
+## 4. Danach
 
-```text
-https://eckl-materialverwaltung.onrender.com
-```
-
-Diese Adresse kann direkt im Browser geöffnet werden.
-
-## Client-EXE nutzen
-
-Die Client-EXE kann weiterhin genutzt werden. Beim ersten Start als Server-Adresse die Render-Adresse eingeben, z. B.:
-
-```text
-https://eckl-materialverwaltung.onrender.com
-```
-
-Nicht `localhost` verwenden.
-
-## Daten aus alter Version übernehmen
-
-1. In der alten lokalen Version als Admin ein Backup erstellen.
-2. In der Online-Version als Admin einloggen.
-3. Backup wiederherstellen.
-
-## Standard-Login
-
-```text
-admin / admin123
-laser / laser123
-buero / buero123
-chef / chef123
-```
-
-Passwörter danach ändern.
+Auf **Manual Deploy → Clear build cache & deploy** klicken.

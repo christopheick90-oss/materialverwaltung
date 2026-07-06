@@ -3,7 +3,7 @@ services:
     name: eckl-materialverwaltung
     runtime: node
     plan: free
-    buildCommand: npm install --omit=dev
+    buildCommand: rm -f package-lock.json && npm install --omit=dev --no-audit --no-fund
     startCommand: node server.js
     healthCheckPath: /healthz
     envVars:
