@@ -1,4 +1,4 @@
-# Render Deploy Anleitung V0.8.1
+# Render Deploy Anleitung V0.8.2
 
 1. ZIP entpacken.
 2. Inhalt des Ordners in GitHub hochladen, nicht die ZIP selbst.
@@ -43,8 +43,15 @@ Wenn die Hauptadresse „Not Found“ zeigt, zuerst diese Links testen:
 `/debug/public` muss mindestens `index.html`, `app.js`, `styles.css` und `logo.png` anzeigen.
 
 
-## Änderung 0.8.1
+## Änderung 0.8.2
 
 - Fester Mindestbestand für alle normalen Materialien: 2 Tafeln.
 - Resttafeln bleiben ausgenommen und lösen keine Mindestbestand-Warnung aus.
 - Neue, importierte und bestehende Materialien werden serverseitig auf diesen Mindestbestand normalisiert.
+
+
+## Änderung 0.8.2
+
+- Manuelle Wareneingänge können erst gebucht werden, wenn die Stärke eingetragen ist.
+- Admin kann Wareneingänge ohne Bestellung nachträglich korrigieren.
+- Die Suche findet Material auch zusammenhängend/kompakt, z. B. `AlmG3` findet auch `Alm G3 foliert`.

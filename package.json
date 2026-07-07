@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.8.1",
-  "description": "Eckl Eco Technics Materialverwaltung V0.8.1 - Mindestbestand 2 Tafeln nur für Tafeln, ohne Pakete/Reste",
+  "version": "0.8.2",
+  "description": "Eckl Eco Technics Materialverwaltung V0.8.2 - Pflicht-Stärke, Wareneingang-Korrektur und bessere Suche",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

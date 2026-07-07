@@ -131,7 +131,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.8.1';
+const PROGRAM_VERSION = '0.8.2';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -1403,8 +1403,8 @@ function buildState(user) {
     shelfOptions: ALLOWED_SHELVES,
     konsiLocation: KONSI_LOCATION,
     lowMaterials,
-    orders: user.role === 'ADMIN' ? [] : db.orders,
-    activeOrders: user.role === 'ADMIN' ? [] : activeOrders,
+    orders: db.orders,
+    activeOrders,
     inventories: user.role === 'ADMIN' ? [] : (db.inventories || []),
     activities: db.activities,
     users: user.role === 'ADMIN' ? db.users.map(publicManagedUser) : [],
@@ -1418,7 +1418,7 @@ function buildState(user) {
       canRequestOrder: ['LASER', 'BUERO', 'CHEF'].includes(user.role),
       canApproveOrder: false,
       canMarkOrdered: ['BUERO', 'CHEF'].includes(user.role),
-      canReceiveDelivery: ['LASER', 'BUERO', 'CHEF'].includes(user.role),
+      canReceiveDelivery: ['LASER', 'BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canCreateMaterial: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canEditMaterial: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canDeleteMaterial: ['CHEF', 'ADMIN'].includes(user.role),
@@ -2496,6 +2496,8 @@ app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO',
     });
   }
 
+  if (!normalizeThickness(sourceMaterial.thickness)) return res.status(400).json({ error: 'Bitte die Stärke eintragen, bevor der Wareneingang gebucht wird.' });
+
   const autoSheets = estimateSheetsFromPackageWeight(sourceMaterial, packageWeightKg, packages);
   const sheets = Math.max(0, Math.floor(numberOr(req.body.receivedSheets, autoSheets)));
   const note = cleanText(req.body.note, '');
@@ -2551,6 +2553,114 @@ app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO',
   emitToAll('material:changed', { material: changedTarget, activity, message: `Wareneingang gebucht: ${changedTarget.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('state:changed', { reason: 'order:direct-receive' });
   res.status(201).json({ order: directIncoming, material: changedTarget });
+});
+
+
+app.put('/api/orders/:id/direct-receive', requireAuth, allowRoles('ADMIN'), (req, res) => {
+  const order = db.orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Wareneingang wurde nicht gefunden.' });
+  if (order.storage === 'KONSI') return res.status(400).json({ error: 'Konsi-Wareneingang wird über Paketnummern geführt und kann hier nicht geändert werden.' });
+  if (order.status !== 'ERLEDIGT') return res.status(400).json({ error: 'Nur bereits gebuchte Wareneingänge können geändert werden.' });
+
+  const name = cleanText(req.body.name || order.materialName, 'Material');
+  const thickness = normalizeThickness(req.body.thickness || order.materialThickness || '');
+  if (!thickness) return res.status(400).json({ error: 'Bitte die Stärke eintragen, bevor der Wareneingang geändert wird.' });
+  const format = normalizeFormat(req.body.format || order.materialFormat || '3000x1500');
+  const targetShelf = normalizeShelf(req.body.targetShelf || order.deliveredToShelf || 'Carport');
+  const packages = Math.max(0, Math.floor(numberOr(req.body.receivedAmount, order.receivedAmount || 0)));
+  const packageWeightKg = Math.max(0, numberOr(req.body.packageWeightKg, order.lastPackageWeightKg || 0));
+  const sourceMaterial = normalizeMaterial({
+    name,
+    thickness,
+    format,
+    storage: 'HAUPTLAGER',
+    shelf: targetShelf,
+    stock: 0,
+    sheetStock: 0,
+    packageStock: 0,
+    rest: false,
+    note: cleanText(req.body.note, '')
+  });
+  const autoSheets = estimateSheetsFromPackageWeight(sourceMaterial, packageWeightKg, packages);
+  const sheets = Math.max(0, Math.floor(numberOr(req.body.receivedSheets, autoSheets)));
+  const note = cleanText(req.body.note, '');
+  if (packages <= 0 && sheets <= 0) return res.status(400).json({ error: 'Bitte gelieferte Pakete oder Tafeln eintragen.' });
+
+  const oldOrderShelf = normalizeShelf(order.deliveredToShelf || targetShelf || 'Carport');
+  const oldSourceMaterial = normalizeMaterial({
+    name: order.materialName,
+    thickness: order.materialThickness,
+    format: order.materialFormat,
+    storage: 'HAUPTLAGER',
+    shelf: oldOrderShelf,
+    stock: 0,
+    sheetStock: 0,
+    packageStock: 0,
+    rest: false
+  });
+  const oldMaterial = order.directIncoming
+    ? db.materials.find(m => m.id === order.materialId)
+    : db.materials.find(m => !m.archived && m.storage !== 'KONSI' && deliveryTargetKey(m, m.shelf) === deliveryTargetKey(oldSourceMaterial, oldOrderShelf));
+  const oldSnapshot = oldMaterial ? materialSnapshotById(oldMaterial.id) : null;
+  const oldPackages = Math.max(0, numberOr(order.receivedAmount, 0));
+  const oldSheets = Math.max(0, numberOr(order.receivedSheets, 0));
+  if (oldMaterial && oldMaterial.storage !== 'KONSI') {
+    oldMaterial.deliveredPackageCount = Math.max(0, numberOr(oldMaterial.deliveredPackageCount, 0) - oldPackages);
+    oldMaterial.sheetStock = Math.max(0, numberOr(oldMaterial.sheetStock, numberOr(oldMaterial.stock, 0)) - oldSheets);
+    oldMaterial.packageStock = Math.max(0, numberOr(oldMaterial.packageStock, 0));
+    oldMaterial.stock = oldMaterial.packageStock + oldMaterial.sheetStock;
+    oldMaterial.updatedAt = nowIso();
+  }
+
+  const existingTarget = db.materials.find(m => !m.archived && m.storage !== 'KONSI' && deliveryTargetKey(m, m.shelf) === deliveryTargetKey(sourceMaterial, targetShelf));
+  const targetSnapshot = existingTarget ? materialSnapshotById(existingTarget.id) : null;
+  const correctedAt = nowIso();
+  const changedTarget = findOrCreateDeliveryTarget(sourceMaterial, targetShelf, packages, sheets, { deliveredAt: correctedAt, deliveredBy: req.user.name, deliveredFromOrderId: order.id, packageWeightKg });
+  changedTarget.name = name;
+  changedTarget.thickness = thickness;
+  changedTarget.format = format;
+  changedTarget.shelf = targetShelf;
+  changedTarget.storage = 'HAUPTLAGER';
+  changedTarget.deliveryPending = true;
+  changedTarget.deliveryStatus = 'GELIEFERT';
+  changedTarget.deliveredAt = correctedAt;
+  changedTarget.deliveredBy = req.user.name;
+  changedTarget.deliveredFromOrderId = order.id;
+  changedTarget.lastPackageWeightKg = packageWeightKg || null;
+  if (note) changedTarget.note = note;
+  changedTarget.updatedAt = correctedAt;
+
+  order.materialId = changedTarget.id;
+  order.materialName = changedTarget.name;
+  order.materialFormat = changedTarget.format;
+  order.materialThickness = changedTarget.thickness;
+  order.requestedAmount = packages;
+  order.requestedSheets = sheets;
+  order.orderedAmount = packages;
+  order.orderedSheets = sheets;
+  order.receivedAmount = packages;
+  order.receivedSheets = sheets;
+  order.deliveredToShelf = targetShelf;
+  order.receivedBy = req.user.name;
+  order.receivedAt = correctedAt;
+  order.doneBy = req.user.name;
+  order.doneAt = correctedAt;
+  order.status = 'ERLEDIGT';
+  order.note = note;
+  order.lastPackageWeightKg = packageWeightKg || null;
+  order.lastUpdate = correctedAt;
+  order.deliveries = Array.isArray(order.deliveries) ? order.deliveries : [];
+  order.deliveries.unshift({ id: uid('d'), packages, sheets, targetShelf, packageNumbers: [], materialFormat: changedTarget.format, packageWeightKg, totalWeightKg: packageWeightKg ? packageWeightKg * packages : 0, autoSheets, note, by: req.user.name, at: correctedAt, directIncoming: Boolean(order.directIncoming), correction: true });
+
+  const snapshots = [oldSnapshot, targetSnapshot || { id: changedTarget.id, existed: false, material: null }].filter(Boolean);
+  const dimensionText = changedTarget.format ? ` · Maße: ${changedTarget.format}` : '';
+  const activity = addActivity('KORREKTUR', `${req.user.name} hat Wareneingang korrigiert: ${materialTitleText(changedTarget)}${dimensionText}, ${packages} Paket(e) / ${sheets} Tafel(n) nach ${targetShelf}.`, req.user, { materialId: changedTarget.id, materialIds: Array.from(new Set([oldMaterial && oldMaterial.id, changedTarget.id].filter(Boolean))), orderId: order.id, undo: makeUndo('WARENEINGANG_KORREKTUR', snapshots, 'Wareneingang-Korrektur rückgängig') });
+
+  saveDb();
+  emitToAll('order:updated', { order, activity, message: `Wareneingang korrigiert: ${changedTarget.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('material:changed', { material: changedTarget, activity, message: `Wareneingang korrigiert: ${changedTarget.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('state:changed', { reason: 'order:direct-receive-edited' });
+  res.json({ order, material: changedTarget });
 });
 
 app.post('/api/change-password', requireAuth, (req, res) => {

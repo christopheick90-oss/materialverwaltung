@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.8.1';
+const CLIENT_VERSION = '0.8.2';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -28,7 +28,7 @@ const pages = [
   { id: 'materials', label: 'Material', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'konsi', label: 'Konsi-Lager', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'inventory', label: 'Inventur', roles: ['LASER','BUERO','CHEF'] },
-  { id: 'orders', label: 'Bestellungen', roles: ['LASER','BUERO','CHEF'] },
+  { id: 'orders', label: 'Bestellungen', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'history', label: 'Historie', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'admin', label: 'Admin', roles: ['ADMIN'] },
   { id: 'admin', label: 'Chef-Übersicht', roles: ['CHEF'] },
@@ -131,6 +131,50 @@ function normalizeFormatValue(value) {
   const text = String(value || '').trim().toLowerCase().replace(/\s+/g, '');
   const match = text.match(/(4000|3000|2500|2000)[x×](2000|1500|1250|1000)/);
   return match ? `${match[1]}x${match[2]}` : '3000x1500';
+}
+
+function normalizeSearchText(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss');
+}
+
+function searchTextVariants(value) {
+  const plain = normalizeSearchText(value);
+  const compact = plain.replace(/[^a-z0-9]+/g, '');
+  return `${plain} ${compact}`;
+}
+
+function searchMatches(haystack, query) {
+  const raw = String(query || '').trim();
+  if (!raw) return true;
+  const hay = searchTextVariants(haystack);
+  return raw.split(/\s+/).filter(Boolean).every(part => hay.includes(searchTextVariants(part).trim()));
+}
+
+function materialSearchText(material) {
+  return [
+    material && material.name,
+    material && material.thickness,
+    material && material.format,
+    material && material.category,
+    material && material.type,
+    material && material.unit,
+    material && material.supplier,
+    material && material.articleNumber,
+    material && material.note,
+    material && quantityLabel(material),
+    material && material.stock,
+    material && material.sheetStock,
+    material && material.packageStock,
+    material && material.shelf,
+    material && material.storage,
+    material && storageLabel(material),
+    material && materialStatus(material).label,
+    material && Array.isArray(material.packageNumbers) ? material.packageNumbers.join(' ') : ''
+  ].join(' ');
 }
 
 function parseMillimeters(value) {
@@ -720,10 +764,10 @@ function sortMaterialsForList(materials) {
 
 function filteredMaterials() {
   if (!materialFilterIsActive()) return [];
-  const text = String(materialFilter.text || '').toLowerCase();
+  const text = String(materialFilter.text || '');
   const materials = state.materials
     .filter(m => !m.archived)
-    .filter(m => `${m.name} ${m.thickness} ${m.format || ''} ${quantityLabel(m)} ${m.stock} ${m.sheetStock || 0} ${m.shelf} ${m.storage} ${storageLabel(m)} ${materialStatus(m).label}`.toLowerCase().includes(text))
+    .filter(m => searchMatches(materialSearchText(m), text))
     .filter(m => {
       if (materialFilter.storage !== 'all' && (m.storage || 'HAUPTLAGER') !== materialFilter.storage) return false;
       if (materialFilter.shelf !== 'all' && String(m.shelf || '') !== materialFilter.shelf) return false;
@@ -811,10 +855,10 @@ function drawMaterialCards() {
 }
 
 function konsiMaterialsFiltered() {
-  const text = String(materialFilter.text || '').toLowerCase();
+  const text = String(materialFilter.text || '');
   return state.materials
     .filter(m => m.storage === 'KONSI')
-    .filter(m => `${m.name} ${m.thickness} ${m.format || ''} ${m.stock} ${m.sheetStock || 0} ${materialLocationLabel(m)}`.toLowerCase().includes(text));
+    .filter(m => searchMatches(materialSearchText(m), text));
 }
 
 function drawKonsiCards() {
@@ -1423,9 +1467,9 @@ function orderSearchText(order) {
 }
 
 function filteredOrdersList(baseOrders) {
-  const text = String(orderFilter.text || '').toLowerCase();
+  const text = String(orderFilter.text || '');
   return baseOrders
-    .filter(o => !text || orderSearchText(o).includes(text))
+    .filter(o => searchMatches(orderSearchText(o), text))
     .filter(o => {
       if (orderFilter.status === 'all') return true;
       if (orderFilter.status === 'open') return ['ANGEFORDERT','BESTELLT','TEILGELIEFERT'].includes(o.status);
@@ -1474,7 +1518,7 @@ function renderOrders() {
   const filtered = filteredOrdersList(incoming);
   $('#orders').innerHTML = `
     <div class="toolbar">
-      <button class="primary" onclick="openOrderModal()">Neue Bestellanforderung</button>
+      ${currentUser.role !== 'ADMIN' ? '<button class="primary" onclick="openOrderModal()">Neue Bestellanforderung</button>' : ''}
       ${state.permissions.canReceiveDelivery ? '<button class="secondary" onclick="openDirectIncomingModal()">Wareneingang ohne Bestellung</button>' : ''}
       <button class="secondary" onclick="loadState()">Aktualisieren</button>
     </div>
@@ -1511,6 +1555,9 @@ function renderOrdersTable(orders, withActions) {
 
 function renderOrderActions(order) {
   const actions = [];
+  if (currentUser && currentUser.role === 'ADMIN' && order.status === 'ERLEDIGT' && order.storage !== 'KONSI') {
+    actions.push(`<button class="primary mini" onclick="openEditDirectIncomingModal('${jsString(order.id)}')">Wareneingang ändern</button>`);
+  }
   if (state.permissions.canMarkOrdered && order.status === 'ANGEFORDERT') {
     actions.push(`<button class="primary mini" onclick="openOrderedModal('${jsString(order.id)}')">Bestellt</button>`);
     actions.push(`<button class="secondary danger mini" onclick="updateOrder('${jsString(order.id)}','REJECT')">Ablehnen</button>`);
@@ -2585,7 +2632,7 @@ window.openDirectIncomingModal = () => {
     <form id="directIncomingForm" class="form-grid">
       <div class="form-full"><label>Material aus Bestand wählen oder neues Material erfassen</label><select id="directIncomingMaterial"><option value="">Neues / nicht gelistetes Material</option>${materialOptions}</select></div>
       <div><label>Material</label><input id="directIncomingName" placeholder="z. B. S235"></div>
-      <div><label>Stärke</label><input id="directIncomingThickness" placeholder="z. B. 3 oder 3 mm"></div>
+      <div><label>Stärke</label><input id="directIncomingThickness" required placeholder="z. B. 3 oder 3 mm"><div class="format-hint">Pflichtfeld: Wareneingang kann erst mit Stärke gebucht werden.</div></div>
       <div><label>Format</label><select id="directIncomingFormat">${formatOptions('3000x1500')}</select></div>
       <div><label>Ablageort</label><select id="directIncomingShelf">${shelfOptions('Carport')}</select></div>
       <div><label>Gelieferte Pakete</label><input id="directIncomingPackages" type="number" min="0" step="1" value="1"></div>
@@ -2638,10 +2685,16 @@ window.openDirectIncomingModal = () => {
   fillFromSelected();
   $('#directIncomingForm').addEventListener('submit', async (event) => {
     event.preventDefault();
+    const requiredThickness = normalizeThicknessInput($('#directIncomingThickness').value).trim();
+    if (!requiredThickness) {
+      showToast('Stärke fehlt', 'Bitte zuerst die Stärke eintragen.');
+      $('#directIncomingThickness').focus();
+      return;
+    }
     const payload = {
       materialId: $('#directIncomingMaterial').value,
       name: $('#directIncomingName').value,
-      thickness: $('#directIncomingThickness').value,
+      thickness: requiredThickness,
       format: $('#directIncomingFormat').value,
       receivedAmount: Number($('#directIncomingPackages').value || 0),
       receivedSheets: Number($('#directIncomingSheets').value || 0),
@@ -2654,6 +2707,87 @@ window.openDirectIncomingModal = () => {
       closeModal();
       showToast('Wareneingang gebucht', `Material wurde als Wareneingang nach ${payload.targetShelf || 'Carport'} gebucht.`);
       orderFilter.status = 'delivered';
+      await loadState(true);
+      currentPage = 'orders';
+      renderCurrentPage();
+    } catch (error) { showToast('Fehler', error.message); }
+  });
+};
+
+window.openEditDirectIncomingModal = (orderId) => {
+  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Nur Admin darf Wareneingänge ändern.');
+  const order = (state.orders || []).find(o => o.id === orderId);
+  if (!order || !order.directIncoming) return showToast('Nicht gefunden', 'Dieser Wareneingang kann nicht geändert werden.');
+  const material = (state.materials || []).find(m => m.id === order.materialId) || {};
+  const name = order.materialName || material.name || '';
+  const thickness = order.materialThickness || material.thickness || '';
+  const format = normalizeFormatValue(order.materialFormat || material.format || '3000x1500');
+  const shelf = order.deliveredToShelf || material.shelf || 'Carport';
+  const packages = Number(order.receivedAmount || 0);
+  const sheets = Number(order.receivedSheets || 0);
+  const weight = Number(order.lastPackageWeightKg || (Array.isArray(order.deliveries) && order.deliveries[0] ? order.deliveries[0].packageWeightKg : 0) || 0);
+  openModal(`
+    <h2>Wareneingang ändern</h2>
+    <p class="muted">Nur Admin: Hier kannst du einen falsch erfassten Wareneingang korrigieren. Die Änderung wird in Material und Historie protokolliert.</p>
+    <form id="editDirectIncomingForm" class="form-grid">
+      <div><label>Material</label><input id="editIncomingName" value="${escapeHtml(name)}" placeholder="z. B. S235"></div>
+      <div><label>Stärke</label><input id="editIncomingThickness" required value="${escapeHtml(thickness)}" placeholder="z. B. 3 oder 3 mm"><div class="format-hint">Pflichtfeld</div></div>
+      <div><label>Format</label><select id="editIncomingFormat">${formatOptions(format)}</select></div>
+      <div><label>Ablageort</label><select id="editIncomingShelf">${shelfOptions(shelf)}</select></div>
+      <div><label>Gelieferte Pakete</label><input id="editIncomingPackages" type="number" min="0" step="1" value="${packages}"></div>
+      <div><label>Gewicht pro Paket kg</label><input id="editIncomingWeight" type="number" min="0" step="0.1" value="${weight || ''}" placeholder="z. B. 850"></div>
+      <div class="form-full weight-calc-box"><div><strong>Berechnung</strong><br><span id="editIncomingWeightHint">Stärke und Format prüfen, dann wird die Berechnung genauer.</span></div><div class="format-hint" id="editIncomingCalcHint">Optional: Pakete und Gewicht pro Paket eintragen.</div></div>
+      <div><label>Gelieferte Tafeln</label><input id="editIncomingSheets" type="number" min="0" step="1" value="${sheets}"></div>
+      <div class="form-full"><label>Bemerkung</label><textarea id="editIncomingNote" placeholder="Warum wurde korrigiert?">${escapeHtml(order.note || '')}</textarea></div>
+      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Änderung speichern</button></div>
+    </form>
+  `);
+  const currentMaterialData = () => ({
+    name: $('#editIncomingName').value,
+    thickness: $('#editIncomingThickness').value,
+    format: $('#editIncomingFormat').value
+  });
+  function updateEditIncomingCalculation() {
+    const materialData = currentMaterialData();
+    const packagesNow = Number($('#editIncomingPackages').value || 0);
+    const weightNow = Number($('#editIncomingWeight').value || 0);
+    const suggestedSheets = estimatedSheetsFromWeight(materialData, weightNow, packagesNow);
+    const oneSheet = sheetWeightKg(materialData);
+    $('#editIncomingWeightHint').textContent = weightInfoText(materialData);
+    if (suggestedSheets > 0) {
+      $('#editIncomingCalcHint').textContent = `${packagesNow} Paket(e) × ${String(weightNow).replace('.', ',')} kg → ca. ${suggestedSheets} Tafeln${oneSheet ? ` (${oneSheet.toFixed(1).replace('.', ',')} kg/Tafel)` : ''}.`;
+    } else {
+      $('#editIncomingCalcHint').textContent = 'Optional: Pakete und Gewicht pro Paket eintragen.';
+    }
+  }
+  ['editIncomingName','editIncomingThickness','editIncomingFormat','editIncomingPackages','editIncomingWeight'].forEach(id => {
+    const el = $('#'+id);
+    if (el) el.addEventListener('input', updateEditIncomingCalculation);
+    if (el && el.tagName === 'SELECT') el.addEventListener('change', updateEditIncomingCalculation);
+  });
+  updateEditIncomingCalculation();
+  $('#editDirectIncomingForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const requiredThickness = normalizeThicknessInput($('#editIncomingThickness').value).trim();
+    if (!requiredThickness) {
+      showToast('Stärke fehlt', 'Bitte zuerst die Stärke eintragen.');
+      $('#editIncomingThickness').focus();
+      return;
+    }
+    const payload = {
+      name: $('#editIncomingName').value,
+      thickness: requiredThickness,
+      format: $('#editIncomingFormat').value,
+      receivedAmount: Number($('#editIncomingPackages').value || 0),
+      receivedSheets: Number($('#editIncomingSheets').value || 0),
+      packageWeightKg: Number($('#editIncomingWeight').value || 0),
+      targetShelf: $('#editIncomingShelf').value,
+      note: $('#editIncomingNote').value
+    };
+    try {
+      await api(`/api/orders/${orderId}/direct-receive`, { method: 'PUT', body: JSON.stringify(payload) });
+      closeModal();
+      showToast('Wareneingang geändert', 'Die Korrektur wurde gespeichert.');
       await loadState(true);
       currentPage = 'orders';
       renderCurrentPage();

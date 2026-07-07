@@ -1,6 +1,6 @@
-# Teständerungen 0.8.1
+# Teständerungen 0.8.2
 
-Basis: letzte funktionierende 0.7.2-Testversion im Master-Design, jetzt als Version 0.8.1 geführt.
+Basis: letzte funktionierende 0.7.2-Testversion im Master-Design, jetzt als Version 0.8.2 geführt.
 
 Geändert:
 
@@ -24,7 +24,7 @@ Lokal testen:
 Erst nach erfolgreichem Test in GitHub Desktop committen/pushen und Render neu deployen.
 
 
-## Ergänzung 0.8.1
+## Ergänzung 0.8.2
 
 - Konsi-Lager → Tabelle einfügen nutzt jetzt das gewünschte Format:
 
@@ -37,13 +37,20 @@ Material ID	Material	Format	Stärke
 - Der Import bleibt nur für Admin sichtbar/freigegeben.
 
 
-## Änderung 0.8.1
+## Änderung 0.8.2
 
 - Fester Mindestbestand nur für normale Tafeln: 2 Tafeln.
 - Pakete, Konsi und Resttafeln bleiben ausgenommen und lösen keine Mindestbestand-Warnung aus.
 - Neue, importierte und bestehende Materialien werden serverseitig so normalisiert, dass nur Tafelbestand für die Warnung zählt.
 
 
-## Version 0.8.1
+## Version 0.8.2
 
-Diese Version bündelt die bisherigen Teständerungen als neuer Stand 0.8.1.
+Diese Version bündelt die bisherigen Teständerungen als neuer Stand 0.8.2.
+
+
+## Änderung 0.8.2
+
+- Manuelle Wareneingänge können erst gebucht werden, wenn die Stärke eingetragen ist.
+- Admin kann Wareneingänge ohne Bestellung nachträglich korrigieren.
+- Die Suche findet Material auch zusammenhängend/kompakt, z. B. `AlmG3` findet auch `Alm G3 foliert`.
