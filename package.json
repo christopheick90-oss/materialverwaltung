@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.7.2-test.4",
-  "description": "Eckl Eco Technics Materialverwaltung V0.7.2 Test - Konsi-Tabellenimport Material ID",
+  "version": "0.8.0",
+  "description": "Eckl Eco Technics Materialverwaltung V0.8.0 - Mindestbestand 2 Tafeln außer Reste",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

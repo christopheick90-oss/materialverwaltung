@@ -1,6 +1,6 @@
-# Teständerungen 0.7.2-test.4
+# Teständerungen 0.8.0
 
-Basis: letzte funktionierende 0.7.2-Testversion im Master-Design.
+Basis: letzte funktionierende 0.7.2-Testversion im Master-Design, jetzt als Version 0.8.0 geführt.
 
 Geändert:
 
@@ -24,7 +24,7 @@ Lokal testen:
 Erst nach erfolgreichem Test in GitHub Desktop committen/pushen und Render neu deployen.
 
 
-## Ergänzung 0.7.2-test.4
+## Ergänzung 0.8.0
 
 - Konsi-Lager → Tabelle einfügen nutzt jetzt das gewünschte Format:
 
@@ -35,3 +35,15 @@ Material ID	Material	Format	Stärke
 - `Material ID` wird als Konsi-/Paketnummer gespeichert.
 - Gleiche `Material ID` darf mehrfach vorkommen und wird mehrfach als eigenes Paket übernommen.
 - Der Import bleibt nur für Admin sichtbar/freigegeben.
+
+
+## Änderung 0.8.0
+
+- Fester Mindestbestand für alle normalen Materialien: 2 Tafeln.
+- Resttafeln bleiben ausgenommen und lösen keine Mindestbestand-Warnung aus.
+- Neue, importierte und bestehende Materialien werden serverseitig auf diesen Mindestbestand normalisiert.
+
+
+## Version 0.8.0
+
+Diese Version bündelt die bisherigen Teständerungen als neuer Stand 0.8.0.

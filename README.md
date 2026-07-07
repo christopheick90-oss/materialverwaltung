@@ -1,4 +1,4 @@
-# Eckl Eco Technics - Materialverwaltung V0.7.2
+# Eckl Eco Technics - Materialverwaltung V0.8.0
 
 Render Online-Version mit Not-Found-Fix.
 
@@ -39,3 +39,8 @@ https://deine-render-adresse.onrender.com/healthz
 https://deine-render-adresse.onrender.com/debug/public
 https://deine-render-adresse.onrender.com/
 ```
+
+
+## Test 0.8.0
+
+Alle normalen Materialien verwenden jetzt den festen Mindestbestand 2 Tafeln. Resttafeln sind ausgenommen.
