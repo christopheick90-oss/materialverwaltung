@@ -1,0 +1,221 @@
+:root{
+  --red:#e4002b;
+  --red-dark:#8f001a;
+  --dark:#1b1b1b;
+  --paper:#fff;
+  --line:#ddd;
+  --muted:#666;
+  --soft:#f4f4f4;
+  --green:#167a35;
+  --amber:#b87300;
+  --radius:18px;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#2c2c2c,#0f0f0f);color:#111}
+.hidden{display:none!important}
+.app{display:flex;min-height:100vh}
+.sidebar{width:260px;position:fixed;top:0;bottom:0;left:0;background:linear-gradient(180deg,#252525,#111);padding:22px;box-shadow:8px 0 30px rgba(0,0,0,.35);z-index:10}
+.logo img{width:100%;max-height:78px;object-fit:contain;margin-bottom:24px}
+.nav{display:grid;gap:6px}
+.nav button{width:100%;border:0;background:transparent;color:#eee;text-align:left;padding:14px 14px;border-left:4px solid transparent;cursor:pointer;font-weight:800;border-radius:12px}
+.nav button.active,.nav button:hover{background:linear-gradient(90deg,var(--red),rgba(228,0,43,.08));border-left-color:#fff}
+.nav .count{float:right;background:#fff;color:#111;border-radius:99px;padding:2px 8px;font-size:12px}
+.profile{position:absolute;left:22px;right:22px;bottom:22px;color:#fff;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);padding:14px;border-radius:16px}
+.profile label{display:block;color:#ccc;margin-bottom:5px;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.profile-name{font-weight:900;margin-bottom:8px}
+.role-badge{display:inline-block;background:var(--red);padding:5px 9px;border-radius:999px;font-weight:900;font-size:12px;margin-bottom:10px}.version-badge{display:inline-block;background:#111;color:#fff;border:1px solid rgba(255,255,255,.18);padding:5px 9px;border-radius:999px;font-weight:900;font-size:12px;margin:0 0 10px 6px}.server-mode-badge{margin-left:0;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.connection{font-size:13px;color:#ddd;margin:8px 0 12px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#777;margin-right:7px}.dot.online{background:#17c964}.dot.offline{background:#ff4d4f}
+.logout{width:100%;color:#fff!important;background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.18)!important}
+.main{margin-left:260px;width:calc(100% - 260px);min-height:100vh;background:#f4f4f4;padding:24px}
+.header{background:linear-gradient(180deg,#2f2f2f,#151515);color:#fff;border-bottom:4px solid var(--red);padding:22px;margin-bottom:18px;box-shadow:0 12px 25px rgba(0,0,0,.18)}
+.rounded{border-radius:var(--radius)}
+.header img{max-width:390px;width:100%;max-height:80px;object-fit:contain;display:block;margin-bottom:12px}
+.header h1{margin:0;font-size:34px}.header p{margin:5px 0 0;color:#ddd;font-weight:700}.header-row{display:flex;justify-content:space-between;gap:16px;align-items:end}.header-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.live-pill{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);padding:10px 12px;border-radius:999px;font-weight:900}.pulse{display:inline-block;width:9px;height:9px;background:var(--red);border-radius:50%;margin-right:7px;box-shadow:0 0 0 0 rgba(228,0,43,.8);animation:pulse 1.4s infinite}@keyframes pulse{70%{box-shadow:0 0 0 10px rgba(228,0,43,0)}100%{box-shadow:0 0 0 0 rgba(228,0,43,0)}}
+.section{display:none}.section.active{display:block}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px}.stat{background:linear-gradient(180deg,#2b2b2b,#111);color:#fff;padding:16px;border-bottom:4px solid var(--red);border-radius:16px;box-shadow:0 8px 20px rgba(0,0,0,.12)}.stat strong{display:block;font-size:30px}.stat span{color:#ddd;font-weight:800;font-size:13px;text-transform:uppercase}
+.card{background:#fff;border:1px solid var(--line);padding:18px;margin-bottom:16px;box-shadow:0 8px 20px rgba(0,0,0,.10);border-radius:var(--radius)}.card h2,.card h3{margin-top:0}.dashboard-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}.searchbar{background:#fff;border:1px solid #ccc;padding:13px 16px;margin-bottom:18px;display:flex;gap:12px;align-items:center;border-radius:16px}.searchbar input{flex:1;font-size:18px;border:0;outline:0}
+.material-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(285px,1fr));gap:14px}.material-card{background:#fff;border:1px solid #ddd;border-left:5px solid var(--red);padding:16px;box-shadow:0 6px 16px rgba(0,0,0,.08);border-radius:16px}.material-card h3{margin:0 0 8px;font-size:22px}.meta{color:#555;font-size:14px;line-height:1.55}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.low{border-left-color:var(--amber)!important;background:linear-gradient(180deg,#fff,#fff9ef)}.rest{border-left-color:#777!important}.small{font-size:13px}.muted{color:#666}.error{color:#b00020;font-weight:800;margin-top:12px}
+button.primary{background:var(--red);color:#fff;border:0;padding:11px 14px;cursor:pointer;font-weight:900;border-radius:12px}button.primary:hover{filter:brightness(.95)}button.secondary{background:#222;color:#fff;border:0;padding:11px 14px;cursor:pointer;font-weight:900;border-radius:12px}button.ghost{background:#f4f4f4;border:1px solid #ccc;padding:10px 13px;cursor:pointer;border-radius:12px;font-weight:800}button.success{background:var(--green)!important;color:#fff!important}button.danger{background:#8b0000!important;color:#fff!important;border:0;padding:11px 14px;cursor:pointer;font-weight:900;border-radius:12px}.full{width:100%}.mini{padding:7px 10px!important;font-size:12px}
+.badge{display:inline-block;background:#222;color:#fff;padding:5px 9px;font-weight:900;border-radius:999px;font-size:12px}.badge.red{background:var(--red)}.badge.green{background:var(--green)}.badge.gray{background:#777}.badge.amber{background:var(--amber)}
+table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e5e5;border-radius:14px;overflow:hidden}th,td{padding:12px;border-bottom:1px solid #e5e5e5;text-align:left;vertical-align:top}th{background:#eee;font-size:13px;text-transform:uppercase;letter-spacing:.03em}tr:last-child td{border-bottom:0}.row-actions{display:flex;gap:6px;flex-wrap:wrap}.order-note{max-width:360px;color:#555}.quick-list{display:grid;gap:10px}.quick-item{background:#f7f7f7;border-left:5px solid var(--red);padding:12px;font-weight:800;border-radius:12px}.quick-item small{display:block;color:#666;margin-top:4px}.empty{padding:20px;background:#f7f7f7;border:1px dashed #aaa;font-weight:800;color:#555;border-radius:16px}.notice{background:#f7f7f7;border:1px dashed #aaa;padding:12px;border-radius:14px}.notice strong{color:#111}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.form-full{grid-column:1/-1}label{font-weight:800;font-size:13px}input,select,textarea{width:100%;padding:12px;border:1px solid #ccc;border-radius:12px;font-family:Arial,Helvetica,sans-serif}textarea{min-height:78px;resize:vertical}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);align-items:center;justify-content:center;z-index:1000;padding:20px}.modal-bg.active{display:flex}.modal{background:#fff;width:min(620px,100%);padding:22px;border-left:6px solid var(--red);border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.35)}.modal h2{margin-top:0}.modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+.toast-area{position:fixed;right:22px;top:22px;z-index:2000;display:grid;gap:10px}.toast{background:#191919;color:#fff;border-left:5px solid var(--red);padding:14px 16px;border-radius:14px;box-shadow:0 15px 35px rgba(0,0,0,.35);min-width:290px;max-width:390px;animation:toastIn .2s ease-out}.toast strong{display:block;margin-bottom:4px}.toast small{color:#ddd}@keyframes toastIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(135deg,#2c2c2c,#0f0f0f)}.login-card{width:min(460px,100%);background:#fff;border-bottom:5px solid var(--red);border-radius:24px;padding:28px;box-shadow:0 20px 70px rgba(0,0,0,.35)}.login-logo{background:linear-gradient(180deg,#2f2f2f,#151515);border-radius:18px;padding:18px;margin-bottom:18px}.login-logo img{width:100%;max-height:85px;object-fit:contain}.login-card h1{margin:0 0 6px}.login-form{display:grid;gap:10px;margin:18px 0}code{background:#eee;padding:2px 5px;border-radius:6px}
+.status-flow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.flow-step{padding:6px 9px;border-radius:999px;background:#eee;font-weight:900;font-size:12px}.flow-step.active{background:#222;color:#fff}.flow-step.done{background:var(--green);color:#fff}.flow-arrow{color:#777}.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}.admin-users{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}.user-card{background:#f7f7f7;border:1px solid #ddd;border-left:5px solid var(--red);padding:14px;border-radius:14px}
+@media(max-width:1100px){.grid{grid-template-columns:repeat(2,1fr)}.dashboard-grid,.split{grid-template-columns:1fr}.header-row{display:block}.header-actions{margin-top:12px}.sidebar{position:relative;width:100%;bottom:auto}.profile{position:relative;left:auto;right:auto;bottom:auto;margin-top:20px}.main{margin-left:0;width:100%}.app{display:block}}
+@media(max-width:650px){.grid{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.main{padding:14px}.header h1{font-size:27px}.toast-area{left:12px;right:12px}.toast{min-width:0;max-width:none}}
+
+/* --- Materialverwaltung V0.2 --- */
+.material-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px}.material-head h3{margin:0;min-width:0}.stock-fill{height:10px;background:#e6e6e6;border-radius:999px;overflow:hidden;margin:13px 0 4px}.stock-fill span{display:block;height:100%;background:linear-gradient(90deg,var(--red),#7a0016);border-radius:999px;min-width:3px}.category-row{display:flex;flex-wrap:wrap;gap:8px}.category-pill{background:#f1f1f1;border:1px solid #ddd;border-left:4px solid var(--red);padding:9px 12px;border-radius:999px;font-weight:900}.rest-pill{border-left-color:#777}.ghost.active-filter{background:#222!important;color:#fff!important;border-color:var(--red)!important;box-shadow:inset 0 -3px 0 var(--red),0 0 0 1px rgba(228,0,43,.18)}.checkline{display:flex;align-items:center;gap:10px;background:#f7f7f7;border:1px dashed #bbb;padding:11px 12px;border-radius:14px}.checkline input{width:auto}.checkline label{font-size:14px}.material-card.low .stock-fill span{background:linear-gradient(90deg,var(--amber),#7a4a00)}.material-card.rest .stock-fill span{background:linear-gradient(90deg,#777,#333)}.category-pill small{font-weight:700;color:#666}.material-grid .empty{grid-column:1/-1}
+
+/* --- Regale & Konsi-Lager V0.2.3 --- */
+.material-card.konsi{border-left-color:#222!important;background:linear-gradient(180deg,#fff,#f7f7f7)}
+.material-card.konsi .stock-fill span{background:linear-gradient(90deg,#222,#555)}
+.konsi-pill{border-left-color:#222}
+
+/* --- Material-Kurzansicht & Konsi-Pakete V0.2.4 --- */
+.compact-material{display:grid;grid-template-columns:1fr 1fr;gap:8px;line-height:1.25;margin-top:8px}
+.compact-material div{background:#f7f7f7;border:1px solid #e1e1e1;border-radius:12px;padding:9px 10px}
+.compact-material span{display:block;font-size:11px;font-weight:900;color:#777;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px}
+.compact-material strong{display:block;color:#111;font-size:15px}
+@media(max-width:650px){.compact-material{grid-template-columns:1fr}}
+
+/* --- Material kompakter + Größenauswahl V0.2.7 --- */
+.material-grid{grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:12px}
+.material-card{padding:12px;border-radius:14px}
+.material-card h3{font-size:19px;line-height:1.15;margin:0}
+.material-head{margin-bottom:6px}
+.compact-material{grid-template-columns:1fr;gap:6px;margin-top:6px}
+.compact-material div{padding:7px 9px;border-radius:10px}
+.compact-material span{font-size:10px;margin-bottom:2px}
+.compact-material strong{font-size:14px}
+.stock-fill{height:8px;margin:9px 0 3px}
+.actions{gap:6px;margin-top:10px}
+.mini{padding:6px 8px!important;font-size:11px}
+.modal{width:min(540px,100%);padding:18px;border-radius:16px}
+.form-grid{gap:10px}
+input,select,textarea{padding:10px;border-radius:10px}
+textarea{min-height:62px}
+.modal-footer{margin-top:12px}
+
+
+/* --- Materialkarten noch kompakter + Stärke in Überschrift V0.2.8 --- */
+.material-grid{grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px}
+.material-card{padding:10px;border-radius:13px}
+.material-card h3{font-size:18px;line-height:1.12}
+.material-head{margin-bottom:5px}
+.material-head .badge{font-size:10px;padding:4px 7px}
+.compact-material{grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.compact-material div{padding:6px 8px;border-radius:9px}
+.compact-material span{font-size:9px;margin-bottom:1px}
+.compact-material strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stock-fill{height:6px;margin:8px 0 2px}
+.actions{gap:5px;margin-top:8px}
+.mini{padding:5px 7px!important;font-size:10.5px}
+@media(max-width:650px){.material-grid{grid-template-columns:1fr}.compact-material{grid-template-columns:1fr 1fr}}
+
+
+/* --- Dashboard kompakter + Materialgruppen entfernt V0.2.9 --- */
+.dashboard-compact .dashboard-stats{gap:10px;margin-bottom:12px}
+.dashboard-compact .stat{padding:10px 12px;border-radius:12px;border-bottom-width:3px}
+.dashboard-compact .stat strong{font-size:23px;line-height:1.05}
+.dashboard-compact .stat span{font-size:11px;letter-spacing:.02em}
+.dashboard-compact .dashboard-grid{gap:12px}
+.dashboard-compact .card{padding:12px;margin-bottom:12px;border-radius:14px;box-shadow:0 5px 14px rgba(0,0,0,.08)}
+.dashboard-compact .card h2{font-size:19px;margin:0 0 10px}
+.dashboard-compact .toolbar{gap:7px;margin-bottom:10px}
+.dashboard-compact button.primary,.dashboard-compact button.secondary,.dashboard-compact button.ghost{padding:8px 10px;border-radius:10px;font-size:12px}
+.dashboard-compact button.mini{padding:4px 7px!important;font-size:10px!important}
+.dashboard-compact table{font-size:12px;border-radius:11px}
+.dashboard-compact th,.dashboard-compact td{padding:7px 8px}
+.dashboard-compact th{font-size:10px}
+.dashboard-compact .small{font-size:11px}
+.dashboard-compact .quick-list{gap:7px}
+.dashboard-compact .quick-item{padding:8px 9px;border-left-width:4px;border-radius:10px;font-size:12px;line-height:1.25}
+.dashboard-compact .quick-item small{font-size:11px;margin-top:3px}
+.dashboard-compact .quick-item .mini{margin-top:5px}
+.dashboard-compact .warning-mini strong{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dashboard-compact .empty{padding:13px;border-radius:12px;font-size:12px}
+.dashboard-compact .footer-note{font-size:11px;margin-top:7px}
+.dashboard-compact .status-flow{gap:4px}
+.dashboard-compact .flow-step{padding:4px 6px;font-size:10px}
+.dashboard-compact .order-note{max-width:260px}
+@media(max-width:1100px){.dashboard-compact .dashboard-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* --- Separater Admin + Benutzerverwaltung V0.3.0 --- */
+tr.is-inactive{opacity:.62;background:#fafafa}
+#users .card p.muted{margin-top:-4px;margin-bottom:14px}
+#users table code{font-size:12px}
+#users .row-actions{min-width:150px}
+
+/* --- Inventur nach Lagerplatz V0.3.2 --- */
+.inventory-area-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.inventory-area-card{background:#fff;border:1px solid #ddd;border-left:5px solid var(--red);padding:13px 14px;text-align:left;border-radius:14px;cursor:pointer;box-shadow:0 5px 14px rgba(0,0,0,.07)}
+.inventory-area-card:hover{transform:translateY(-1px);box-shadow:0 9px 20px rgba(0,0,0,.12)}
+.inventory-area-card strong{display:block;font-size:17px;margin-bottom:4px}.inventory-area-card span{display:block;color:#666;font-size:12px;font-weight:800}.inventory-area-card.konsi-area{border-left-color:#222}
+.inventory-session-card{padding:14px}.inventory-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:12px}.inventory-head h2{margin:0 0 4px}.inventory-head-right{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.inventory-table th,.inventory-table td{padding:8px 9px;font-size:13px}.inventory-table th{font-size:11px}.inventory-table input,.inventory-table select{padding:7px 8px;border-radius:9px;font-size:13px}.inventory-count-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.inventory-count-grid label{font-size:11px;color:#555}.inventory-diff{font-weight:900}.inventory-actions{margin-top:12px;margin-bottom:6px}.inventory-history-card table{font-size:13px}.inventory-history-card th,.inventory-history-card td{padding:8px 9px}
+@media(max-width:850px){.inventory-head{display:block}.inventory-head-right{justify-content:flex-start;margin-top:8px}.inventory-count-grid{grid-template-columns:1fr}.inventory-table{font-size:12px}}
+
+
+/* --- Admin Material-Mehrfachanlage + maximierter Start V0.3.6 --- */
+#adminMaterials .admin-material-card{padding:14px}
+#adminMaterials .admin-material-card h2{font-size:22px;margin-bottom:6px}
+.bulk-scroll{overflow:auto;border-radius:14px;border:1px solid #e5e5e5}
+.bulk-material-table{border:0;border-radius:0;min-width:900px}
+.bulk-material-table th,.bulk-material-table td{padding:7px 8px;font-size:12px}
+.bulk-material-table th{font-size:10px}
+.bulk-material-table input,.bulk-material-table select{padding:7px 8px;border-radius:9px;font-size:12px}
+.bulk-material-table .bulk-name{min-width:180px}
+.bulk-material-table .bulk-thickness{min-width:82px}
+.bulk-material-table .bulk-sheets,.bulk-material-table .bulk-min{max-width:82px}
+.bulk-material-table .center{text-align:center;vertical-align:middle}
+.bulk-material-table .center input{width:auto}
+#adminMaterials .footer-note{margin-top:10px}
+@media(max-width:900px){.bulk-material-table{min-width:820px}}
+
+/* --- Admin-Systembereich V0.3.9 --- */
+.admin-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-bottom:16px}
+.admin-tile{background:#fff;border:1px solid #ddd;border-left:5px solid var(--red);text-align:left;padding:14px;border-radius:14px;box-shadow:0 6px 16px rgba(0,0,0,.08);cursor:pointer;color:#111}
+.admin-tile:hover{transform:translateY(-1px);box-shadow:0 10px 20px rgba(0,0,0,.13)}
+.admin-tile strong{display:block;font-size:18px;margin-bottom:5px}.admin-tile span{display:block;color:#555;font-size:12px;font-weight:800}
+.settings-list{display:grid;gap:10px;margin-bottom:14px}.settings-list div{background:#f7f7f7;border:1px solid #ddd;border-left:5px solid var(--red);padding:10px;border-radius:12px}.settings-list strong{display:block;margin-bottom:4px}.settings-list span{color:#555;font-weight:800;font-size:13px}
+.settings-form textarea#importCsv,.settings-form textarea,#importCsv{min-height:150px}
+.compact-system-list .quick-item small{word-break:break-word}.code-block{background:#f7f7f7;border:1px dashed #aaa;padding:12px;border-radius:12px;overflow:auto;font-size:12px}
+#adminBackup table,#adminArchive table,#adminLog table,#adminImportExport table,#adminSettings table{font-size:13px}
+#adminBackup th,#adminBackup td,#adminArchive th,#adminArchive td,#adminLog th,#adminLog td,#adminSettings th,#adminSettings td{padding:8px 9px}
+.badge.amber{background:#b26a00;color:#fff}
+
+
+/* V0.4.2 Lieferung / Pakete = Tafeln per Gewicht */
+.material-card.delivered{border-left-color:#167a35;background:#fbfffc}
+.delivered-panel{border-left:5px solid #167a35}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.panel-head h2{margin:0}
+.delivered-list{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.delivered-mini{border-left-color:#167a35}
+.weight-calc-box{background:#f7f7f7;border:1px dashed #aaa;padding:10px;display:grid;gap:6px}
+
+
+/* V0.4.3 Material-Historie, Korrektur und Dublettenprüfung */
+.history-list{max-height:52vh;overflow:auto;border-radius:14px}
+.history-list table{font-size:12px}
+.history-list th,.history-list td{padding:8px 9px;vertical-align:top}
+.history-list td:nth-child(3){min-width:260px}
+.material-card .actions .ghost.mini:nth-child(2){background:#fff}
+
+/* V0.4.4 Filtersystem Materialliste + Lieferungssuche */
+.filter-panel{background:#fff;border:1px solid #ddd;border-left:5px solid var(--red);border-radius:14px;padding:12px;margin-bottom:14px;box-shadow:0 5px 14px rgba(0,0,0,.07)}
+.filter-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.filter-row span{font-size:12px;font-weight:900;text-transform:uppercase;color:#555;min-width:62px}
+button.active-filter{background:#222!important;color:#fff!important;border-color:var(--red)!important;box-shadow:inset 0 -3px 0 var(--red),0 0 0 1px rgba(228,0,43,.18)}
+.filter-summary{display:flex;justify-content:space-between;gap:10px;align-items:center;border-top:1px solid #eee;padding-top:9px;margin-top:2px;color:#555;font-weight:900;font-size:12px}
+.inline-search{margin:0 0 10px;padding:10px 12px;border-radius:12px;background:#f7f7f7}
+.inline-search input{font-size:15px;background:transparent}
+.order-filter-panel{border-left-color:#222}
+.order-filter-panel .filter-row span{min-width:58px}
+@media(max-width:650px){.filter-summary{display:block}.filter-summary button{margin-top:8px}.filter-row span{width:100%;min-width:0}.inline-search{display:block}.inline-search strong{display:block;margin-bottom:6px}}
+
+/* Inventurdatum */
+.inventory-next-stat{margin-bottom:16px;border-bottom-width:4px}
+.inventory-next-stat span{display:block;color:#ddd;font-weight:800;text-transform:uppercase;font-size:13px}
+.inventory-next-stat strong{font-size:30px;line-height:1.15}
+.dashboard-compact .inventory-next-stat{max-width:360px}
+@media(max-width:850px){.inventory-next-stat{max-width:none}}
+
+/* V0.4.9 Inventur-Fortschritt, Zusatzmaterial und Export */
+.inventory-progress-line{margin-top:8px;font-size:13px;color:#333;font-weight:800}
+.inventory-progress-line .muted{margin-left:8px;font-weight:700}
+.inventory-progress-bar{height:9px;background:#e6e6e6;border-radius:999px;overflow:hidden;margin-top:7px;max-width:520px}
+.inventory-progress-bar span{display:block;height:100%;background:linear-gradient(90deg,var(--red),#7a0016);border-radius:999px;min-width:3px}
+.inventory-archive-filter{border-left-color:#222}
+.inventory-session-card .badge.green{margin-top:3px}
+@media(max-width:850px){.inventory-progress-line .muted{display:block;margin-left:0;margin-top:4px}.inventory-progress-bar{max-width:none}}
+
+/* --- V0.6.1 Tabellenimport: Modal scrollt sauber, Vorschau bleibt bedienbar --- */
+.modal-bg{align-items:flex-start;overflow:auto;padding:18px}
+.modal{max-height:calc(100vh - 36px);overflow:auto;overscroll-behavior:contain}
+.paste-preview{max-height:300px;overflow:auto;border:1px solid #e5e5e5;border-radius:14px;margin:12px 0;background:#fff}
+.paste-preview table{border:0;border-radius:0;margin:0;min-width:760px}
+.modal-toolbar-sticky{position:sticky;bottom:0;background:#fff;border-top:1px solid #eee;padding:10px 0 0;margin:8px 0 0;z-index:2}

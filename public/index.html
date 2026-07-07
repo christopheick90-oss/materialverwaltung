@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eckl Eco Technics - Materialverwaltung</title>
+  <link rel="stylesheet" href="/styles.css?v=0.7.2">
+</head>
+<body>
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="login-logo"><img src="/logo.png" alt="Eckl Eco Technics"></div>
+      <h1>Materialverwaltung</h1>
+      <p class="muted">Anmeldung nach Bereich. Danach wird die Oberfläche automatisch passend freigeschaltet.</p>
+      <form id="loginForm" class="login-form">
+        <label>Benutzer</label>
+        <input id="username" autocomplete="username" placeholder="admin / laser / buero / chef" required>
+        <label>Passwort</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="admin123 / laser123 / buero123 / chef123" required>
+        <button class="primary full" type="submit">Anmelden</button>
+      </form>
+      <div class="notice small">
+        <strong>Testzugänge:</strong><br>
+        Admin: <code>admin</code> / <code>admin123</code><br>
+        Laser: <code>laser</code> / <code>laser123</code><br>
+        Büro: <code>buero</code> / <code>buero123</code><br>
+        Chef: <code>chef</code> / <code>chef123</code>
+      </div>
+      <div id="loginError" class="error"></div>
+    </div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="logo"><img src="/logo.png" alt="Eckl Eco Technics"></div>
+      <nav class="nav" id="nav"></nav>
+      <div class="profile">
+        <label>Angemeldet als</label>
+        <div class="profile-name" id="profileName">-</div>
+        <div id="roleBadge" class="role-badge">-</div>
+        <div id="appVersion" class="version-badge">Version 0.7.2</div>
+        <div id="serverModeBadge" class="version-badge server-mode-badge">Server: -</div>
+        <div class="connection"><span id="connectionDot" class="dot"></span><span id="connectionText">Verbinde...</span></div>
+        <button class="ghost logout" id="logoutBtn">Abmelden</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="header rounded">
+        <img src="/logo.png" alt="Eckl Eco Technics">
+        <div class="header-row">
+          <div>
+            <h1 id="pageTitle">Dashboard</h1>
+            <p id="pageSubtitle">Live synchronisierte Materialverwaltung</p>
+          </div>
+          <div class="header-actions">
+            <div class="live-pill"><span class="pulse"></span> Live-Meldungen</div>
+            <button class="secondary" id="refreshBtn">Aktualisieren</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="dashboard" class="section active"></section>
+      <section id="materials" class="section"></section>
+      <section id="konsi" class="section"></section>
+      <section id="inventory" class="section"></section>
+      <section id="orders" class="section"></section>
+      <section id="history" class="section"></section>
+      <section id="admin" class="section"></section>
+      <section id="adminMaterials" class="section"></section>
+      <section id="users" class="section"></section>
+      <section id="adminSettings" class="section"></section>
+      <section id="adminBackup" class="section"></section>
+      <section id="adminImportExport" class="section"></section>
+      <section id="adminArchive" class="section"></section>
+      <section id="adminLog" class="section"></section>
+    </main>
+  </div>
+
+  <div id="toastArea" class="toast-area"></div>
+  <div id="modal" class="modal-bg"><div class="modal" id="modalInner"></div></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js?v=0.7.2"></script>
+</body>
+</html>
