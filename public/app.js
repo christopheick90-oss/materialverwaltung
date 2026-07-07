@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.8.4';
+const CLIENT_VERSION = '0.8.5';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -174,6 +174,54 @@ function searchMatches(haystack, query) {
   return raw.split(/\s+/).filter(Boolean).every(part =>
     searchVariants(part).some(needle => hay.includes(needle))
   );
+}
+
+
+function searchTokens(query) {
+  return String(query || '').trim().split(/\s+/).filter(Boolean);
+}
+
+function normalizeSearchNumber(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\s*mm\s*$/i, '')
+    .replace(',', '.')
+    .trim();
+}
+
+function isLikelyThicknessSearchToken(value) {
+  const token = normalizeSearchNumber(value);
+  if (!token) return false;
+  // Werkstoffnummern wie 1.4301 sollen Material-Synonyme bleiben, keine Stärke-Suche.
+  if (/^1[.,]?4301$/.test(String(value || '').toLowerCase().replace(/\s+/g, ''))) return false;
+  if (/^\d+$/.test(token)) return true;
+  const decimalMatch = token.match(/^\d+\.(\d+)$/);
+  if (!decimalMatch) return false;
+  return decimalMatch[1].length <= 2 && Number(token) <= 50;
+}
+
+function materialThicknessMatchesToken(material, token) {
+  const queryNumber = normalizeSearchNumber(token);
+  if (!queryNumber) return false;
+  const thicknessNumber = parseMillimeters(material && material.thickness);
+  if (!thicknessNumber) return false;
+  if (queryNumber.includes('.')) {
+    return Math.abs(thicknessNumber - Number(queryNumber)) < 0.0001;
+  }
+  // Suche "1" bedeutet: 1 mm, 1,5 mm, 1,25 mm usw. – aber nicht 10 mm oder Format 3000x1500.
+  return Math.floor(thicknessNumber) === Number(queryNumber);
+}
+
+function materialSearchMatches(material, query) {
+  const tokens = searchTokens(query);
+  if (!tokens.length) return true;
+  const hay = searchTextVariants(materialSearchText(material));
+  return tokens.every(token => {
+    if (isLikelyThicknessSearchToken(token)) {
+      return materialThicknessMatchesToken(material, token);
+    }
+    return searchVariants(token).some(needle => hay.includes(needle));
+  });
 }
 
 function materialSearchText(material) {
@@ -850,7 +898,7 @@ function filteredMaterials() {
   const text = String(materialFilter.text || '');
   const materials = state.materials
     .filter(m => !m.archived)
-    .filter(m => searchMatches(materialSearchText(m), text))
+    .filter(m => materialSearchMatches(m, text))
     .filter(m => {
       if (materialFilter.storage !== 'all' && (m.storage || 'HAUPTLAGER') !== materialFilter.storage) return false;
       if (materialFilter.shelf !== 'all' && String(m.shelf || '') !== materialFilter.shelf) return false;
@@ -941,7 +989,7 @@ function konsiMaterialsFiltered() {
   const text = String(materialFilter.text || '');
   return state.materials
     .filter(m => m.storage === 'KONSI')
-    .filter(m => searchMatches(materialSearchText(m), text));
+    .filter(m => materialSearchMatches(m, text));
 }
 
 function drawKonsiCards() {
