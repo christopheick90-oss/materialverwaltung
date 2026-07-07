@@ -1,7 +1,7 @@
 {
   "name": "eckl-lagerverwaltung-prototyp",
-  "version": "0.7.4",
-  "description": "Eckl Eco Technics Lagerverwaltung Prototyp im Master-Design",
+  "version": "0.7.5",
+  "description": "Eckl Eco Technics Lagerverwaltung Prototyp im wiederhergestellten Master-Design",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
