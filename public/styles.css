@@ -220,7 +220,7 @@ button.active-filter{background:#222!important;color:#fff!important;border-color
 .paste-preview table{border:0;border-radius:0;margin:0;min-width:760px}
 .modal-toolbar-sticky{position:sticky;bottom:0;background:#fff;border-top:1px solid #eee;padding:10px 0 0;margin:8px 0 0;z-index:2}
 
-/* V0.8.2: Geliefert direkt bei Material, kompakter */
+/* V0.8.3: Geliefert direkt bei Material, kompakter */
 .delivered-panel-small{padding:12px 14px;margin-bottom:12px}
 .delivered-panel-small .panel-head{margin-bottom:8px}
 .delivered-panel-small .panel-head h2{font-size:19px}
@@ -228,3 +228,20 @@ button.active-filter{background:#222!important;color:#fff!important;border-color
 .delivered-list-small .quick-item{padding:9px 10px;font-size:13px}
 .delivered-list-small .quick-item strong{font-size:14px}
 .delivered-list-small .quick-item small{font-size:11px}
+
+
+/* V0.8.3: Admin-Bereich übersichtlicher gruppiert */
+.admin-hero-card{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;border-left:6px solid var(--red)}
+.admin-hero-card h2{margin:0 0 6px}.admin-hero-card p{margin:0;color:#555;font-weight:700;line-height:1.45}
+.admin-hero-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.admin-menu-overview{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:14px;margin-bottom:16px}
+.admin-menu-section{margin-bottom:0;padding:16px}
+.admin-section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px;border-bottom:1px solid #e5e5e5;padding-bottom:10px}
+.admin-section-title h2{margin:0;font-size:20px}.admin-section-title p{margin:4px 0 0;color:#555;font-weight:800;font-size:13px}
+.admin-tile-grid-compact{grid-template-columns:1fr;gap:9px;margin-bottom:0}
+.admin-tile.active,.admin-subnav-row .ghost.active{outline:2px solid var(--red);background:#fff6f8}
+.admin-subnav-card{padding:14px;margin-bottom:14px;border-left:6px solid var(--red)}
+.admin-subnav-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.admin-subnav-head strong{display:block;font-size:18px}.admin-subnav-head span{display:block;color:#555;font-weight:800;font-size:12px;margin-top:3px}
+.admin-subnav-row{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:800px){.admin-hero-card,.admin-subnav-head{display:block}.admin-hero-badges{justify-content:flex-start;margin-top:10px}.admin-subnav-head button{margin-top:10px}.admin-menu-overview{grid-template-columns:1fr}}

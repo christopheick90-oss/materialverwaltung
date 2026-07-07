@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.8.2';
+const CLIENT_VERSION = '0.8.3';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -32,13 +32,13 @@ const pages = [
   { id: 'history', label: 'Historie', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'admin', label: 'Admin', roles: ['ADMIN'] },
   { id: 'admin', label: 'Chef-Übersicht', roles: ['CHEF'] },
-  { id: 'adminMaterials', label: 'Materialien', roles: ['ADMIN'] },
-  { id: 'users', label: 'Benutzer', roles: ['ADMIN'] },
-  { id: 'adminSettings', label: 'Einstellungen', roles: ['ADMIN'] },
-  { id: 'adminBackup', label: 'Backup', roles: ['ADMIN'] },
-  { id: 'adminImportExport', label: 'Import/Export', roles: ['ADMIN'] },
-  { id: 'adminArchive', label: 'Archiv', roles: ['ADMIN'] },
-  { id: 'adminLog', label: 'Systemprotokoll', roles: ['ADMIN'] }
+  { id: 'adminMaterials', label: 'Materialpflege', roles: ['ADMIN'], adminSubpage: true },
+  { id: 'users', label: 'Benutzer & Rollen', roles: ['ADMIN'], adminSubpage: true },
+  { id: 'adminSettings', label: 'Einstellungen & Rechte', roles: ['ADMIN'], adminSubpage: true },
+  { id: 'adminBackup', label: 'Backup & Wiederherstellung', roles: ['ADMIN'], adminSubpage: true },
+  { id: 'adminImportExport', label: 'Import & Export', roles: ['ADMIN'], adminSubpage: true },
+  { id: 'adminArchive', label: 'Archiv', roles: ['ADMIN'], adminSubpage: true },
+  { id: 'adminLog', label: 'Systemprotokoll', roles: ['ADMIN'], adminSubpage: true }
 ];
 
 function api(path, options = {}) {
@@ -454,18 +454,16 @@ function renderNav() {
   const pendingForOffice = state.orders.filter(o => ['ANGEFORDERT','BESTELLT','TEILGELIEFERT'].includes(o.status)).length;
   const myOpen = state.orders.filter(o => ['ANGEFORDERT','BESTELLT','TEILGELIEFERT'].includes(o.status)).length;
   const warnings = state.lowMaterials.length;
+  const currentDefinition = pages.find(p => p.id === currentPage && p.roles.includes(currentUser.role));
+  const activeMainPage = currentDefinition && currentDefinition.adminSubpage ? 'admin' : currentPage;
   $('#nav').innerHTML = pages
-    .filter(p => p.roles.includes(currentUser.role))
+    .filter(p => p.roles.includes(currentUser.role) && !p.adminSubpage)
     .map(p => {
       const count = p.id === 'orders'
         ? (currentUser.role === 'LASER' ? myOpen : pendingForOffice)
         : (p.id === 'materials' ? warnings
-          : (p.id === 'konsi' ? state.materials.filter(m => m.storage === 'KONSI').length
-          : (p.id === 'adminMaterials' ? state.materials.length
-          : (p.id === 'users' ? (state.users || []).filter(u => u.active !== false).length
-          : (p.id === 'adminArchive' ? (state.archivedMaterials || []).length
-          : (p.id === 'adminBackup' ? (state.backups || []).length : 0))))));
-      return `<button data-page="${p.id}" class="${currentPage === p.id ? 'active' : ''}">${p.label}${count ? `<span class="count">${count}</span>` : ''}</button>`;
+          : (p.id === 'konsi' ? state.materials.filter(m => m.storage === 'KONSI').length : 0));
+      return `<button data-page="${p.id}" class="${activeMainPage === p.id ? 'active' : ''}">${p.label}${count ? `<span class="count">${count}</span>` : ''}</button>`;
     }).join('');
 
   $$('#nav button').forEach(btn => btn.addEventListener('click', () => {
@@ -480,8 +478,8 @@ function renderCurrentPage() {
   const section = $(`#${currentPage}`);
   if (!section) return;
   section.classList.add('active');
-  const page = pages.find(p => p.id === currentPage);
-  $('#pageTitle').textContent = page ? page.label : 'Dashboard';
+  const page = pages.find(p => p.id === currentPage && p.roles.includes(currentUser.role));
+  $('#pageTitle').textContent = page && page.adminSubpage ? `Admin · ${page.label}` : (page ? page.label : 'Dashboard');
   $('#pageSubtitle').textContent = subtitleForPage(currentPage);
   if (currentPage === 'dashboard') renderDashboard();
   if (currentPage === 'materials') renderMaterials();
@@ -522,6 +520,71 @@ function subtitleForPage(page) {
 }
 
 
+const adminMenuGroups = [
+  {
+    title: 'Benutzer & Rechte',
+    text: 'Zugänge, Rollen und Grundeinstellungen',
+    items: [
+      { page: 'users', title: 'Benutzer & Rollen', text: 'Zugänge, Passwörter, Rollen' },
+      { page: 'adminSettings', title: 'Einstellungen & Rechte', text: 'Regale, Stärken, Systemstatus' }
+    ]
+  },
+  {
+    title: 'Material & Listen',
+    text: 'Materialdaten pflegen, importieren und archivieren',
+    items: [
+      { page: 'adminMaterials', title: 'Materialpflege', text: 'Mehrfachanlage, leere Daten löschen' },
+      { page: 'adminImportExport', title: 'Import & Export', text: 'CSV und Google-Sheets-Daten' },
+      { page: 'adminArchive', title: 'Archiv', text: 'Archivierte Materialien wiederherstellen' }
+    ]
+  },
+  {
+    title: 'Sicherung & Kontrolle',
+    text: 'Daten sichern, prüfen und nachvollziehen',
+    items: [
+      { page: 'adminBackup', title: 'Backup', text: 'Sichern und wiederherstellen' },
+      { page: 'adminLog', title: 'Systemprotokoll', text: 'Änderungen und Logins' },
+      { page: 'history', title: 'Historie', text: 'Alle Aktivitäten ansehen' }
+    ]
+  },
+  {
+    title: 'Tägliche Kontrolle',
+    text: 'Schnellzugriff auf Arbeitsbereiche',
+    items: [
+      { page: 'materials', title: 'Materialbestand', text: 'Bestände prüfen und korrigieren' },
+      { page: 'orders', title: 'Wareneingang', text: 'Bestellungen und Korrekturen' },
+      { page: 'konsi', title: 'Konsi-Lager', text: 'Konsi-Material einsehen' }
+    ]
+  }
+];
+
+function adminMenuButton(item, activePage = '') {
+  const isActive = item.page === activePage;
+  return `<button class="admin-tile ${isActive ? 'active' : ''}" onclick="goPage('${jsString(item.page)}')"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.text)}</span></button>`;
+}
+
+function renderAdminMenuOverview(activePage = '') {
+  return `<div class="admin-menu-overview">
+    ${adminMenuGroups.map(group => `<div class="card admin-menu-section">
+      <div class="admin-section-title"><div><h2>${escapeHtml(group.title)}</h2><p>${escapeHtml(group.text)}</p></div></div>
+      <div class="admin-tile-grid admin-tile-grid-compact">${group.items.map(item => adminMenuButton(item, activePage)).join('')}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
+function renderAdminSubnav(activePage) {
+  return `<div class="card admin-subnav-card">
+    <div class="admin-subnav-head">
+      <div><strong>Admin-Bereich</strong><span>Untermenüs sind hier gruppiert und nicht mehr einzeln in der linken Hauptnavigation.</span></div>
+      <button class="secondary mini" onclick="goPage('admin')">Zur Admin-Übersicht</button>
+    </div>
+    <div class="admin-subnav-row">
+      ${adminMenuGroups.flatMap(group => group.items).filter(item => item.page !== 'history' && item.page !== 'materials' && item.page !== 'orders' && item.page !== 'konsi').map(item => `<button class="ghost mini ${item.page === activePage ? 'active' : ''}" onclick="goPage('${jsString(item.page)}')">${escapeHtml(item.title)}</button>`).join('')}
+    </div>
+  </div>`;
+}
+
+
 function renderAdminDashboard() {
   const users = state.users || [];
   const active = users.filter(u => u.active !== false).length;
@@ -531,6 +594,13 @@ function renderAdminDashboard() {
   const target = currentPage === 'admin' ? '#admin' : '#dashboard';
   $(target).innerHTML = `
     <div class="dashboard-compact">
+      <div class="card admin-hero-card">
+        <div>
+          <h2>Admin-Übersicht</h2>
+          <p>Alle Admin-Funktionen sind jetzt in Gruppen sortiert. Links bleibt nur noch der Hauptpunkt <strong>Admin</strong>, damit die Navigation übersichtlich bleibt.</p>
+        </div>
+        <div class="admin-hero-badges"><span class="badge gray">Gruppierte Menüs</span><span class="badge gray">Weniger Seitenleiste</span></div>
+      </div>
       <div class="grid dashboard-stats">
         <div class="stat"><span>Aktive Benutzer</span><strong>${active}</strong></div>
         <div class="stat"><span>Deaktiviert</span><strong>${inactive}</strong></div>
@@ -538,16 +608,7 @@ function renderAdminDashboard() {
         <div class="stat"><span>Archiv</span><strong>${archived}</strong></div>
         <div class="stat"><span>Backups</span><strong>${(state.backups || []).length}</strong></div>
       </div>
-      <div class="admin-tile-grid">
-        <button class="admin-tile" onclick="goPage('users')"><strong>Benutzer</strong><span>Zugänge, Rollen, Passwörter</span></button>
-        <button class="admin-tile" onclick="goPage('adminMaterials')"><strong>Materialien</strong><span>Mehrfachanlage und Stammdaten</span></button>
-        <button class="admin-tile" onclick="goPage('adminSettings')"><strong>Einstellungen</strong><span>Regale, Größen, Stärken, Rechte</span></button>
-        <button class="admin-tile" onclick="goPage('adminBackup')"><strong>Backup</strong><span>Sichern und wiederherstellen</span></button>
-        <button class="admin-tile" onclick="goPage('adminImportExport')"><strong>Import/Export</strong><span>CSV Materiallisten</span></button>
-        <button class="admin-tile" onclick="goPage('adminArchive')"><strong>Archiv</strong><span>Material wieder aktivieren</span></button>
-        <button class="admin-tile" onclick="goPage('adminLog')"><strong>Systemprotokoll</strong><span>Änderungen und Logins</span></button>
-        <button class="admin-tile" onclick="goPage('materials')"><strong>Material</strong><span>Bestand prüfen und korrigieren</span></button>
-      </div>
+      ${renderAdminMenuOverview('admin')}
       ${renderInventoryTimerCard(true)}
       <div class="split">
         <div class="card compact-activity-card"><h2>Systemstatus</h2>${renderSystemStatus(status)}</div>
@@ -1599,6 +1660,7 @@ function renderAdminMaterials() {
   const archivedCount = (state.archivedMaterials || []).length;
   const emptyCount = [...(state.materials || []), ...(state.archivedMaterials || [])].filter(isEmptyMaterialClient).length;
   $('#adminMaterials').innerHTML = `
+    ${renderAdminSubnav('adminMaterials')}
     <div class="toolbar">
       <button class="primary" onclick="addBulkMaterialRows(5)">5 Zeilen hinzufügen</button>
       <button class="secondary" onclick="submitBulkMaterials()">Materialien anlegen</button>
@@ -1721,6 +1783,7 @@ window.submitBulkMaterials = async () => {
 function renderUsers() {
   const users = state.users || [];
   $('#users').innerHTML = `
+    ${renderAdminSubnav('users')}
     <div class="toolbar">
       <button class="primary" onclick="openUserModal()">Benutzer anlegen</button>
       <button class="secondary" onclick="loadState()">Aktualisieren</button>
@@ -1784,6 +1847,7 @@ function renderAdminSettings() {
   const settings = state.settings || {};
   const status = state.systemStatus || {};
   $('#adminSettings').innerHTML = `
+    ${renderAdminSubnav('adminSettings')}
     <div class="split">
       <div class="card">
         <h2>Grundeinstellungen</h2>
@@ -1830,6 +1894,7 @@ function renderRoleRights() {
 function renderAdminBackup() {
   const backups = state.backups || [];
   $('#adminBackup').innerHTML = `
+    ${renderAdminSubnav('adminBackup')}
     <div class="toolbar"><button class="primary" onclick="createBackupNow()">Backup erstellen</button><button class="secondary" onclick="loadState()">Aktualisieren</button><span class="badge gray">Nur Admin</span></div>
     <div class="card"><h2>Datensicherungen</h2><p class="muted">Vor Wiederherstellung wird automatisch nochmal eine Sicherung erstellt.</p>${renderBackupTable(backups)}</div>
   `;
@@ -1842,6 +1907,7 @@ function renderBackupTable(backups) {
 
 function renderAdminImportExport() {
   $('#adminImportExport').innerHTML = `
+    ${renderAdminSubnav('adminImportExport')}
     <div class="split">
       <div class="card"><h2>Materialliste exportieren</h2><p class="muted">Exportiert alle aktiven und archivierten Materialien als CSV.</p><button class="primary" onclick="exportMaterialsCsv()">CSV exportieren</button></div>
       <div class="card"><h2>CSV / Google Sheets importieren</h2><p class="muted">Büro-Format: Regal; Material; t=; Format; Menge; Abmass X; Abmass Y. Wird automatisch in die Material-Anordnung übernommen. Google-Sheets-Kopien mit Tabulatoren werden erkannt.</p><textarea id="importCsv" placeholder="CSV oder aus Google Sheets kopierte Tabelle hier einfügen"></textarea><div class="modal-footer"><button class="primary" onclick="importMaterialsCsv()">Materialien importieren</button></div></div>
@@ -1855,6 +1921,7 @@ Konsi Alu;2;3000x1500;Regal 6;0;2;1;KONSI;nein;KONSI-001,KONSI-002</pre></div>
 function renderAdminArchive() {
   const archived = state.archivedMaterials || [];
   $('#adminArchive').innerHTML = `
+    ${renderAdminSubnav('adminArchive')}
     <div class="toolbar"><button class="secondary" onclick="loadState()">Aktualisieren</button><span class="badge gray">Archivierte Materialien: ${archived.length}</span></div>
     <div class="card"><h2>Material-Archiv</h2>${archived.length ? renderArchiveTable(archived) : '<div class="empty">Keine archivierten Materialien vorhanden.</div>'}</div>
   `;
@@ -1865,7 +1932,7 @@ function renderArchiveTable(items) {
 }
 
 function renderAdminLog() {
-  $('#adminLog').innerHTML = `<div class="toolbar"><button class="secondary" onclick="loadState()">Aktualisieren</button><span class="badge gray">Letzte ${state.activities.length} Einträge</span></div><div class="card"><h2>Systemprotokoll</h2>${renderActivityList(state.activities)}</div>`;
+  $('#adminLog').innerHTML = `${renderAdminSubnav('adminLog')}<div class="toolbar"><button class="secondary" onclick="loadState()">Aktualisieren</button><span class="badge gray">Letzte ${state.activities.length} Einträge</span></div><div class="card"><h2>Systemprotokoll</h2>${renderActivityList(state.activities)}</div>`;
 }
 
 

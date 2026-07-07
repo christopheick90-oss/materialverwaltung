@@ -1,4 +1,4 @@
-# Eckl Eco Technics - Materialverwaltung V0.8.2
+# Eckl Eco Technics - Materialverwaltung V0.8.3
 
 Render Online-Version mit Not-Found-Fix.
 
@@ -41,13 +41,18 @@ https://deine-render-adresse.onrender.com/
 ```
 
 
-## Test 0.8.2
+## Test 0.8.3
 
 Nur normale Tafeln verwenden den festen Mindestbestand 2 Tafeln. Pakete, Konsi und Resttafeln sind ausgenommen.
 
 
-## Änderung 0.8.2
+## Änderung 0.8.3
 
 - Manuelle Wareneingänge können erst gebucht werden, wenn die Stärke eingetragen ist.
 - Admin kann Wareneingänge ohne Bestellung nachträglich korrigieren.
 - Die Suche findet Material auch zusammenhängend/kompakt, z. B. `AlmG3` findet auch `Alm G3 foliert`.
+
+
+## Änderung 0.8.3
+
+Admin-Bereich wurde übersichtlicher gruppiert. Die Seitenleiste zeigt für Admin nur noch den Hauptpunkt Admin, die Untermenüs liegen geordnet im Admin-Bereich.

@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.8.2",
-  "description": "Eckl Eco Technics Materialverwaltung V0.8.2 - Pflicht-Stärke, Wareneingang-Korrektur und bessere Suche",
+  "version": "0.8.3",
+  "description": "Eckl Eco Technics Materialverwaltung V0.8.3 - Admin-Übersicht gruppiert und Navigation bereinigt",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",
