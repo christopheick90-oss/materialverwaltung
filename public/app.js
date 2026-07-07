@@ -244,6 +244,20 @@ function orderQuantityLabel(order, type = 'request') {
   return `${amount || 0} Pakete${Number(sheets) ? ` + ${Number(sheets)} Tafeln` : ''}`;
 }
 
+function orderMaterial(order) {
+  return (state.materials || []).find(m => m.id === order.materialId) || null;
+}
+
+function orderFormatLabel(order) {
+  const material = orderMaterial(order);
+  return order.materialFormat || order.format || (material && material.format) || '';
+}
+
+function orderDimensionLine(order) {
+  const format = orderFormatLabel(order);
+  return format ? `<br><span class="small muted">Maße: ${escapeHtml(format)}</span>` : '';
+}
+
 function shelfOptions(selected = '') {
   const shelves = (state && state.shelfOptions && state.shelfOptions.length) ? state.shelfOptions : defaultShelves;
   return shelves.map(shelf => `<option value="${escapeHtml(shelf)}" ${shelf === selected ? 'selected' : ''}>${escapeHtml(shelf)}</option>`).join('');
@@ -752,7 +766,7 @@ function renderDeliveredMaterials() {
     <div class="card delivered-panel delivered-panel-small">
       <div class="panel-head"><h2>Geliefert</h2><span class="badge green">Wareneingang</span></div>
       <div class="quick-list delivered-list delivered-list-small">
-        ${delivered.map(m => `<div class="quick-item delivered-mini"><strong>${escapeHtml(materialTitle(m))}</strong><small>${quantityLabel(m)} · ${escapeHtml(materialLocationLabel(m))}</small><div class="row-actions">${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}<button class="ghost mini" onclick="openStockModal('${jsString(m.id)}','REMOVE')">Entnahme</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button></div></div>`).join('')}
+        ${delivered.map(m => `<div class="quick-item delivered-mini"><strong>${escapeHtml(materialTitle(m))}</strong><small>${quantityLabel(m)} · Maße: ${escapeHtml(m.format || '-')} · ${escapeHtml(materialLocationLabel(m))}</small><div class="row-actions">${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}<button class="ghost mini" onclick="openStockModal('${jsString(m.id)}','REMOVE')">Entnahme</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button></div></div>`).join('')}
       </div>
       ${delivered.length >= 6 ? '<div class="footer-note">Weitere gelieferte Positionen sind unten in der Materialliste sichtbar.</div>' : ''}
     </div>`;
@@ -1372,7 +1386,7 @@ window.resetOrderFilters = () => {
 
 function orderSearchText(order) {
   return [
-    order.materialName, order.note, order.requestedBy, order.requestedByRole,
+    order.materialName, orderFormatLabel(order), order.note, order.requestedBy, order.requestedByRole,
     order.deliveredToShelf, order.status, statusNames[order.status],
     order.createdAt ? fmtDate(order.createdAt) : '',
     order.lastUpdate ? fmtDate(order.lastUpdate) : '',
@@ -1458,8 +1472,8 @@ function renderOrdersTable(orders, withActions) {
         ${orders.map(o => `
           <tr>
             <td>${o.directIncoming ? '<span class="badge green">Wareneingang</span>' : statusBadge(o.status)}</td>
-            <td><strong>${escapeHtml(o.materialName)}</strong><div class="small muted">${o.directIncoming ? 'Erfasst von' : 'Angefragt von'} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}</td>
-            <td>${o.directIncoming ? `Wareneingang: <strong>${orderQuantityLabel(o, 'received')}</strong>${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : `Anfrage: <strong>${orderQuantityLabel(o, 'request')}</strong>${o.orderedAmount ? `<br>Bestellt: <strong>${orderQuantityLabel(o, 'ordered')}</strong>` : ''}${(Number(o.receivedAmount)||Number(o.receivedSheets)) ? `<br>Geliefert: <strong>${orderQuantityLabel(o, 'received')}</strong>${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : ''}`}</td>
+            <td><strong>${escapeHtml(o.materialName)}</strong>${orderDimensionLine(o)}<div class="small muted">${o.directIncoming ? 'Erfasst von' : 'Angefragt von'} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}</td>
+            <td>${o.directIncoming ? `Wareneingang: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : `Anfrage: <strong>${orderQuantityLabel(o, 'request')}</strong>${o.orderedAmount ? `<br>Bestellt: <strong>${orderQuantityLabel(o, 'ordered')}</strong>` : ''}${(Number(o.receivedAmount)||Number(o.receivedSheets)) ? `<br>Geliefert: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : ''}`}</td>
             <td class="order-note">${escapeHtml(o.note || '-')}</td>
             <td>${orderFlow(o.status)}<div class="small muted">Letzte Änderung: ${fmtDate(o.lastUpdate)}</div>${o.status === 'ERLEDIGT' ? `<div class="small muted">Geliefert: ${fmtDate(o.receivedAt || o.lastUpdate)}</div>` : ''}</td>
             ${withActions ? `<td>${renderOrderActions(o)}</td>` : ''}

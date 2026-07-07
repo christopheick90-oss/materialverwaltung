@@ -131,7 +131,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.7.2-test.2';
+const PROGRAM_VERSION = '0.7.2-test.3';
 const KONSI_LOCATION = 'Garage';
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
 const DEFAULT_STANDARD_STRENGTHS = ['1 mm','1,5 mm','2 mm','3 mm','4 mm','5 mm','6 mm','8 mm','10 mm'];
@@ -2195,6 +2195,8 @@ app.post('/api/orders', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF'), (req,
     id: uid('o'),
     materialId: material.id,
     materialName: material.name,
+    materialFormat: material.format || '',
+    materialThickness: material.thickness || '',
     storage: material.storage,
     requestedAmount: amount,
     requestedSheets: material.storage === 'KONSI' ? 0 : sheets,
@@ -2449,6 +2451,8 @@ app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO',
     id: uid('o'),
     materialId: changedTarget.id,
     materialName: changedTarget.name,
+    materialFormat: changedTarget.format || sourceMaterial.format || '',
+    materialThickness: changedTarget.thickness || sourceMaterial.thickness || '',
     storage: 'HAUPTLAGER',
     requestedAmount: packages,
     requestedSheets: sheets,
@@ -2468,7 +2472,7 @@ app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO',
     receivedBy: req.user.name,
     receivedAt,
     deliveredToShelf: targetShelf,
-    deliveries: [{ id: uid('d'), packages, sheets, targetShelf, packageNumbers: [], packageWeightKg, totalWeightKg: packageWeightKg ? packageWeightKg * packages : 0, autoSheets, note, by: req.user.name, at: receivedAt, directIncoming: true }],
+    deliveries: [{ id: uid('d'), packages, sheets, targetShelf, packageNumbers: [], materialFormat: changedTarget.format || sourceMaterial.format || '', packageWeightKg, totalWeightKg: packageWeightKg ? packageWeightKg * packages : 0, autoSheets, note, by: req.user.name, at: receivedAt, directIncoming: true }],
     directIncoming: true,
     doneBy: req.user.name,
     doneAt: receivedAt,
@@ -2478,7 +2482,8 @@ app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO',
   db.orders.unshift(directIncoming);
 
   const weightText = packageWeightKg ? ` (${packages} Paket(e) × ${packageWeightKg} kg = ${packageWeightKg * packages} kg, ca. ${autoSheets} Tafeln berechnet)` : '';
-  const activity = addActivity('WARENEINGANG', `${req.user.name} hat Wareneingang ohne Bestellung für ${materialTitleText(changedTarget)} gebucht: ${orderQuantityText({ ...directIncoming, receivedAmount: packages, receivedSheets: sheets }, 'received')} nach ${targetShelf}${weightText}.`, req.user, { materialId: changedTarget.id, materialIds: [changedTarget.id], orderId: directIncoming.id, undo: makeUndo('WARENEINGANG', [beforeTargetSnapshot], 'Wareneingang ohne Bestellung rückgängig') });
+  const dimensionText = (changedTarget.format || sourceMaterial.format) ? ` · Maße: ${changedTarget.format || sourceMaterial.format}` : '';
+  const activity = addActivity('WARENEINGANG', `${req.user.name} hat Wareneingang ohne Bestellung für ${materialTitleText(changedTarget)}${dimensionText} gebucht: ${orderQuantityText({ ...directIncoming, receivedAmount: packages, receivedSheets: sheets }, 'received')} nach ${targetShelf}${weightText}.`, req.user, { materialId: changedTarget.id, materialIds: [changedTarget.id], orderId: directIncoming.id, undo: makeUndo('WARENEINGANG', [beforeTargetSnapshot], 'Wareneingang ohne Bestellung rückgängig') });
   saveDb();
   emitToAll('order:updated', { order: directIncoming, activity, message: `Wareneingang ohne Bestellung: ${changedTarget.name} → ${targetShelf}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('material:changed', { material: changedTarget, activity, message: `Wareneingang gebucht: ${changedTarget.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });

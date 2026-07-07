@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.7.2-test.2",
-  "description": "Eckl Eco Technics Materialverwaltung V0.7.2 Test - Konsi-Tabelle/Format/Wareneingang",
+  "version": "0.7.2-test.3",
+  "description": "Eckl Eco Technics Materialverwaltung V0.7.2 Test - Konsi-Duplikate/Geliefert/Maße im Wareneingang",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",
