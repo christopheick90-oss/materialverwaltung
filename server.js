@@ -131,9 +131,9 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.8.0';
+const PROGRAM_VERSION = '0.8.1';
 const KONSI_LOCATION = 'Garage';
-const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: alle normalen Materialien warnen ab 2 Tafeln, Resttafeln ausgenommen.
+const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
 const DEFAULT_STANDARD_STRENGTHS = ['1 mm','1,5 mm','2 mm','3 mm','4 mm','5 mm','6 mm','8 mm','10 mm'];
 const DEFAULT_INVENTORY_LAST_DATE = '2027-06-30';
@@ -200,6 +200,31 @@ function normalizeStorage(value, shelf = '') {
   if (text === 'KONSI' || text === 'KONSI-LAGER' || text === 'KONSIGNATION') return 'KONSI';
   if (shelfText.includes('konsi')) return 'KONSI';
   return 'HAUPTLAGER';
+}
+
+function materialHasPackageUnit(material) {
+  const text = [material?.unit, material?.type, material?.category].map(v => cleanText(v).toLowerCase()).join(' ');
+  return text.includes('paket');
+}
+
+function materialUsesSheetMinimum(material) {
+  if (!material) return false;
+  if (Boolean(material.rest)) return false;
+  if (normalizeStorage(material.storage, material.shelf) === 'KONSI') return false;
+  if (materialHasPackageUnit(material) && Math.max(0, numberOr(material.sheetStock, 0)) <= 0) return false;
+  return true;
+}
+
+function materialMinStockValue(material) {
+  return materialUsesSheetMinimum(material) ? DEFAULT_MATERIAL_MIN_STOCK : 0;
+}
+
+function materialSheetStockValue(material) {
+  return Math.max(0, numberOr(material?.sheetStock, numberOr(material?.stock, 0)));
+}
+
+function isMaterialLow(material) {
+  return materialUsesSheetMinimum(material) && !material.deliveryPending && materialSheetStockValue(material) <= DEFAULT_MATERIAL_MIN_STOCK;
 }
 
 function quantityText(material) {
@@ -594,19 +619,28 @@ function normalizeMaterial(raw, index = 0) {
   const storage = normalizeStorage(raw.storage, raw.shelf);
   const packageNumbers = storage === 'KONSI' ? normalizePackageNumbers(raw.packageNumbers) : [];
   const shelf = storage === 'KONSI' ? KONSI_LOCATION : normalizeShelf(raw.shelf);
+  const unit = storage === 'KONSI' ? 'Pakete' : (cleanText(raw.unit, rest ? 'Stück' : 'Tafeln') || (rest ? 'Stück' : 'Tafeln'));
+  const type = cleanText(raw.type, rest ? 'Resttafel' : 'Tafel') || (rest ? 'Resttafel' : 'Tafel');
+  const category = cleanText(raw.category, rest ? 'Resttafeln' : 'Allgemein') || (rest ? 'Resttafeln' : 'Allgemein');
+  const unitText = [unit, type, category].join(' ').toLowerCase();
+  const packageOnlyStock = unitText.includes('paket') && raw.sheetStock === undefined && raw.packageStock === undefined && !Boolean(raw.deliveryPending);
+  const normalizedStock = storage === 'KONSI' && packageNumbers.length ? packageNumbers.length : (Boolean(raw.deliveryPending) ? Math.max(0, numberOr(raw.sheetStock, numberOr(raw.stock, 0))) : Math.max(0, numberOr(raw.stock, 0)));
+  const normalizedPackageStock = storage === 'KONSI' ? 0 : (Boolean(raw.deliveryPending) ? 0 : Math.max(0, numberOr(raw.packageStock, packageOnlyStock ? raw.stock : 0)));
+  const normalizedSheetStock = storage === 'KONSI' ? 0 : (packageOnlyStock ? 0 : Math.max(0, numberOr(raw.sheetStock, numberOr(raw.stock, 0))));
+  const baseMaterialForMinimum = { storage, shelf, rest, unit, type, category, sheetStock: normalizedSheetStock };
   return {
     id: cleanText(raw.id) || uid('m'),
     name,
-    category: cleanText(raw.category, rest ? 'Resttafeln' : 'Allgemein') || (rest ? 'Resttafeln' : 'Allgemein'),
-    type: cleanText(raw.type, rest ? 'Resttafel' : 'Tafel') || (rest ? 'Resttafel' : 'Tafel'),
+    category,
+    type,
     thickness: normalizeThickness(raw.thickness),
     format: normalizeFormat(raw.format),
-    unit: storage === 'KONSI' ? 'Pakete' : (cleanText(raw.unit, rest ? 'Stück' : 'Tafeln') || (rest ? 'Stück' : 'Tafeln')),
-    stock: storage === 'KONSI' && packageNumbers.length ? packageNumbers.length : (Boolean(raw.deliveryPending) ? Math.max(0, numberOr(raw.sheetStock, numberOr(raw.stock, 0))) : Math.max(0, numberOr(raw.stock, 0))),
-    packageStock: storage === 'KONSI' ? 0 : (Boolean(raw.deliveryPending) ? 0 : Math.max(0, numberOr(raw.packageStock, 0))),
-    sheetStock: storage === 'KONSI' ? 0 : Math.max(0, numberOr(raw.sheetStock, numberOr(raw.stock, 0))),
+    unit,
+    stock: normalizedStock,
+    packageStock: normalizedPackageStock,
+    sheetStock: normalizedSheetStock,
     packageNumbers,
-    minStock: rest ? 0 : DEFAULT_MATERIAL_MIN_STOCK,
+    minStock: materialMinStockValue(baseMaterialForMinimum),
     storage,
     shelf,
     compartment: cleanText(raw.compartment, ''),
@@ -963,7 +997,7 @@ function mergeMaterialQuantities(target, incoming) {
     target.sheetStock = Math.max(0, numberOr(target.sheetStock, numberOr(target.stock, 0))) + Math.max(0, numberOr(incoming.sheetStock, numberOr(incoming.stock, 0)));
     target.stock = target.packageStock + target.sheetStock;
   }
-  target.minStock = target.rest ? 0 : DEFAULT_MATERIAL_MIN_STOCK;
+  target.minStock = materialMinStockValue(target);
   target.updatedAt = nowIso();
   return target;
 }
@@ -1353,7 +1387,7 @@ function systemStatus() {
 
 function buildState(user) {
   const materials = visibleMaterials();
-  const lowMaterials = materials.filter(m => !m.rest && !m.deliveryPending && Number(m.stock) <= DEFAULT_MATERIAL_MIN_STOCK);
+  const lowMaterials = materials.filter(isMaterialLow);
   const activeOrders = db.orders.filter(o => o.status !== 'ERLEDIGT' && o.status !== 'ABGELEHNT');
   return {
     appName: APP_NAME,
@@ -1887,7 +1921,7 @@ app.post('/api/materials/:id/stock', requireAuth, allowRoles('LASER', 'BUERO', '
   const activity = addActivity(activityType, `${req.user.name} hat ${materialTitleText(material)}: ${actionText} (${beforeText} → ${afterText}).${targetText}${extra}`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_STOCK', [beforeSnapshot], undoLabel) });
   saveDb();
   emitToAll('material:changed', { material, activity, message: `${material.name}: ${beforeText} → ${afterText}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
-  if (!material.rest && material.stock <= DEFAULT_MATERIAL_MIN_STOCK) {
+  if (isMaterialLow(material)) {
     emitToAll('stock:low', { material, message: `Mindestbestand erreicht: ${material.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   }
   emitToAll('state:changed', { reason: 'material:stock' });
@@ -1906,7 +1940,7 @@ app.post('/api/materials/:id/remove', requireAuth, allowRoles('LASER', 'BUERO', 
   const activity = addActivity('BESTAND', `${req.user.name} hat ${materialTitleText(material)}: entnommen (${before} → ${material.stock}).`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_REMOVE', [beforeSnapshot], 'Entnahme rückgängig') });
   saveDb();
   emitToAll('material:changed', { material, activity, message: `${material.name}: Bestand ${before} → ${material.stock}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
-  if (!material.rest && material.stock <= DEFAULT_MATERIAL_MIN_STOCK) {
+  if (isMaterialLow(material)) {
     emitToAll('stock:low', { material, message: `Mindestbestand erreicht: ${material.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   }
   emitToAll('state:changed', { reason: 'material:remove' });

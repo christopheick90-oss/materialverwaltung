@@ -1,4 +1,4 @@
-# Eckl Eco Technics - Materialverwaltung V0.8.0
+# Eckl Eco Technics - Materialverwaltung V0.8.1
 
 Render Online-Version mit Not-Found-Fix.
 
@@ -41,6 +41,6 @@ https://deine-render-adresse.onrender.com/
 ```
 
 
-## Test 0.8.0
+## Test 0.8.1
 
-Alle normalen Materialien verwenden jetzt den festen Mindestbestand 2 Tafeln. Resttafeln sind ausgenommen.
+Nur normale Tafeln verwenden den festen Mindestbestand 2 Tafeln. Pakete, Konsi und Resttafeln sind ausgenommen.

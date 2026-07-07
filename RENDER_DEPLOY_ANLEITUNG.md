@@ -1,4 +1,4 @@
-# Render Deploy Anleitung V0.8.0
+# Render Deploy Anleitung V0.8.1
 
 1. ZIP entpacken.
 2. Inhalt des Ordners in GitHub hochladen, nicht die ZIP selbst.
@@ -43,7 +43,7 @@ Wenn die Hauptadresse „Not Found“ zeigt, zuerst diese Links testen:
 `/debug/public` muss mindestens `index.html`, `app.js`, `styles.css` und `logo.png` anzeigen.
 
 
-## Änderung 0.8.0
+## Änderung 0.8.1
 
 - Fester Mindestbestand für alle normalen Materialien: 2 Tafeln.
 - Resttafeln bleiben ausgenommen und lösen keine Mindestbestand-Warnung aus.

@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.8.0';
+const CLIENT_VERSION = '0.8.1';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -184,15 +184,36 @@ function statusBadge(status) {
   return `<span class="badge ${map[status] || 'gray'}">${statusNames[status] || status}</span>`;
 }
 
+function materialHasPackageUnit(material) {
+  const text = [material?.unit, material?.type, material?.category].map(v => String(v || '').toLowerCase()).join(' ');
+  return text.includes('paket');
+}
+
+function materialSheetStock(material) {
+  return Math.max(0, Number(material?.sheetStock ?? material?.stock ?? 0) || 0);
+}
+
+function materialUsesSheetMinimum(material) {
+  if (!material) return false;
+  if (material.rest) return false;
+  if (material.storage === 'KONSI') return false;
+  if (materialHasPackageUnit(material) && materialSheetStock(material) <= 0) return false;
+  return true;
+}
+
 function materialMinStock(material) {
-  return material && material.rest ? 0 : DEFAULT_MATERIAL_MIN_STOCK;
+  return materialUsesSheetMinimum(material) ? DEFAULT_MATERIAL_MIN_STOCK : 0;
+}
+
+function materialIsLow(material) {
+  return materialUsesSheetMinimum(material) && !material.deliveryPending && materialSheetStock(material) <= DEFAULT_MATERIAL_MIN_STOCK;
 }
 
 function materialStatus(material) {
   if (material.deliveryPending) return { key: 'delivered', label: 'Geliefert', cls: 'green' };
   if (material.rest) return { key: 'rest', label: 'Resttafel', cls: 'gray' };
   if (Number(material.stock) <= 0) return { key: 'empty', label: 'Leer', cls: 'red' };
-  if (Number(material.stock) <= materialMinStock(material)) return { key: 'low', label: 'Warnung', cls: 'amber' };
+  if (materialIsLow(material)) return { key: 'low', label: 'Warnung', cls: 'amber' };
   return { key: 'ok', label: 'OK', cls: 'green' };
 }
 
@@ -709,7 +730,7 @@ function filteredMaterials() {
       if (materialFilter.format !== 'all' && normalizeFormatValue(m.format || '') !== materialFilter.format) return false;
       if (materialFilter.status === 'all') return true;
       if (materialFilter.status === 'rest') return !!m.rest;
-      if (materialFilter.status === 'low') return !m.rest && !m.deliveryPending && Number(m.stock) <= materialMinStock(m);
+      if (materialFilter.status === 'low') return materialIsLow(m);
       if (materialFilter.status === 'delivered') return !!m.deliveryPending;
       if (materialFilter.status === 'empty') return !m.deliveryPending && Number(m.stock) <= 0;
       if (materialFilter.status === 'ok') return materialStatus(m).key === 'ok';
@@ -736,7 +757,7 @@ function canMoveMaterial(m) {
 
 function materialCardHtml(m) {
   const status = materialStatus(m);
-  const fill = m.rest ? 100 : Math.max(0, Math.min(100, Math.round((Number(m.stock) / Math.max(materialMinStock(m) || 1, 1)) * 100)));
+  const fill = materialMinStock(m) ? Math.max(0, Math.min(100, Math.round((materialSheetStock(m) / Math.max(materialMinStock(m), 1)) * 100))) : 100;
   return `
     <div class="material-card ${m.deliveryPending ? 'delivered' : (m.rest ? 'rest' : (m.storage === 'KONSI' ? 'konsi' : (status.key === 'low' || status.key === 'empty' ? 'low' : '')))}">
       <div class="material-head"><h3>${escapeHtml(materialTitle(m))}</h3>${materialStatusBadge(m)}</div>
@@ -1546,7 +1567,7 @@ function renderAdminMaterials() {
           <tbody id="bulkMaterialBody"></tbody>
         </table>
       </div>
-      <div class="footer-note">Aktuell angelegte Materialien: ${existingCount}. Normale Materialien werden im Hauptlager angelegt. Konsi-Pakete bleiben weiter über Konsi-Material anlegen.</div>
+      <div class="footer-note">Aktuell angelegte Materialien: ${existingCount}. Normale Tafeln im Hauptlager bekommen Mindestbestand 2. Pakete, Konsi und Reste sind ausgenommen.</div>
     </div>
     <div class="card danger-zone-card">
       <h2>Materialdatenbank leeren</h2>
@@ -1938,7 +1959,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
       <div><label>Lagerbereich</label><select id="matStorage"><option value="HAUPTLAGER" ${data.storage !== 'KONSI' ? 'selected' : ''}>Hauptlager</option><option value="KONSI" ${data.storage === 'KONSI' ? 'selected' : ''}>Konsi-Lager</option></select></div>
       <div><label id="matStockLabel">Menge</label><input id="matStock" type="number" min="0" step="1" value="${mainStockValue}"></div>
       <div id="matPackageNumbersRow" class="form-full"><label>Konsi-Paketnummern</label><textarea id="matPackageNumbers" placeholder="Eine Nummer pro Zeile oder mit Komma getrennt ...">${escapeHtml((data.packageNumbers || []).join('\n'))}</textarea><div class="format-hint">Diese Nummern werden bei der Paket-Entnahme als Auswahl angezeigt. Wenn Nummern eingetragen sind, wird die Paketmenge automatisch daraus berechnet.</div></div>
-      <div><label>Mindestbestand</label><input id="matMinStock" type="number" min="0" step="1" value="${data.rest ? 0 : DEFAULT_MATERIAL_MIN_STOCK}" readonly><div class="format-hint">Fester Wert: 2 Tafeln. Resttafeln sind ausgenommen.</div></div>
+      <div><label>Mindestbestand</label><input id="matMinStock" type="number" min="0" step="1" value="${materialMinStock(data)}" readonly><div class="format-hint">Fester Wert: 2 Tafeln. Pakete, Konsi und Resttafeln sind ausgenommen.</div></div>
       <div id="matShelfRow"><label>Regal / Lagerplatz</label><select id="matShelf">${shelfOptions(data.shelf)}</select></div><div id="matKonsiLocationRow" class="notice hidden"><strong>Konsi-Lager:</strong> Standort Garage. Es gibt dort keine Regale.</div>
       <div class="form-full checkline"><input id="matRest" type="checkbox" ${data.rest ? 'checked' : ''}><label for="matRest">Ist Resttafel / Restmaterial</label></div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">${isEdit ? 'Speichern' : 'Anlegen'}</button></div>
@@ -1977,7 +1998,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
       packageStock: isKonsiForm ? 0 : (Number(data.packageStock) || 0),
       sheetStock: isKonsiForm ? 0 : Number($('#matStock').value),
       packageNumbers: isKonsiForm ? parsePackageNumbers($('#matPackageNumbers').value) : [],
-      minStock: $('#matRest').checked ? 0 : DEFAULT_MATERIAL_MIN_STOCK,
+      minStock: isKonsiForm || $('#matRest').checked ? 0 : DEFAULT_MATERIAL_MIN_STOCK,
       storage: $('#matStorage').value,
       shelf: isKonsiForm ? konsiLocation() : $('#matShelf').value,
       compartment: '',
@@ -2160,7 +2181,7 @@ function previewMaterialsFromTableText(text, mode = '') {
         shelf: konsiLocation(),
         sheets: 0,
         packages: materialId ? 1 : 0,
-        minStock: DEFAULT_MATERIAL_MIN_STOCK,
+        minStock: 0,
         storage: 'KONSI',
         rest: false,
         packageNumbers: materialId ? [materialId] : []
@@ -2184,7 +2205,7 @@ function previewMaterialsFromTableText(text, mode = '') {
       shelf: storage === 'KONSI' ? konsiLocation() : (get(row, 'regal', 3) || 'Regal 1'),
       sheets,
       packages: storage === 'KONSI' ? (packageNumbers.length || packages) : packages,
-      minStock: isTruthyImportValueClient(get(row, 'resttafel', 8)) ? 0 : DEFAULT_MATERIAL_MIN_STOCK,
+      minStock: storage === 'KONSI' || isTruthyImportValueClient(get(row, 'resttafel', 8)) ? 0 : DEFAULT_MATERIAL_MIN_STOCK,
       storage,
       rest: isTruthyImportValueClient(get(row, 'resttafel', 8)),
       packageNumbers
