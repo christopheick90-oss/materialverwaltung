@@ -131,7 +131,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.7.2-test.3';
+const PROGRAM_VERSION = '0.7.2-test.4';
 const KONSI_LOCATION = 'Garage';
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
 const DEFAULT_STANDARD_STRENGTHS = ['1 mm','1,5 mm','2 mm','3 mm','4 mm','5 mm','6 mm','8 mm','10 mm'];
@@ -1146,6 +1146,7 @@ function normalizeImportHeaderKey(value) {
     .replace(/[^a-z0-9]+/g, '');
   const map = {
     material: 'material', name: 'material', bezeichnung: 'material', werkstoff: 'material', materialname: 'material',
+    materialid: 'materialid', matid: 'materialid', id: 'materialid', nummer: 'materialid', nr: 'materialid', materialnummer: 'materialid',
     staerke: 'staerke', starkemm: 'staerke', staerkemm: 'staerke', dicke: 'staerke', dickemm: 'staerke', t: 'staerke', tmm: 'staerke',
     groesse: 'groesse', grosse: 'groesse', format: 'groesse', abmessung: 'groesse', abmessungen: 'groesse', abmass: 'groesse', abmasse: 'groesse', abmassx: 'abmassx', abmasx: 'abmassx', abmessungx: 'abmassx', abmessx: 'abmassx', x: 'abmassx', abmassy: 'abmassy', abmasy: 'abmassy', abmessungy: 'abmassy', abmessy: 'abmassy', y: 'abmassy',
     regal: 'regal', lagerplatz: 'regal', platz: 'regal', ablage: 'regal', standort: 'regal',
@@ -1207,7 +1208,8 @@ function normalizeFormatFromImportedValues(formatValue, xValue, yValue) {
 
 function materialFromImport(row, headerMap = null, index = 0, fallbackMode = 'standard') {
   const bueroFallbackMap = { regal: 0, material: 1, staerke: 2, groesse: 3, tafeln: 4, abmassx: 5, abmassy: 6 };
-  const defaultFallbackMap = { material: 0, staerke: 1, groesse: 2, regal: 3, tafeln: 4, pakete: 5, mindestbestand: 6, bereich: 7, resttafel: 8, paketnummern: 9 };
+  const konsiFallbackMap = { materialid: 0, paketnummern: 0, paketnummer: 0, nummern: 0, material: 1, groesse: 2, staerke: 3 };
+  const defaultFallbackMap = { material: 0, staerke: 1, groesse: 2, regal: 3, tafeln: 4, pakete: 5, mindestbestand: 6, bereich: 7, resttafel: 8, paketnummern: 9, materialid: 9 };
   const get = (names, fallbackIndex = -1) => {
     const list = Array.isArray(names) ? names : [names];
     if (headerMap) {
@@ -1219,15 +1221,37 @@ function materialFromImport(row, headerMap = null, index = 0, fallbackMode = 'st
     }
     for (const name of list) {
       const key = normalizeImportHeaderKey(name);
-      const mappedIndex = fallbackMode === 'buero' ? bueroFallbackMap[key] : defaultFallbackMap[key];
+      const mappedIndex = fallbackMode === 'buero' ? bueroFallbackMap[key] : (fallbackMode === 'konsi' ? konsiFallbackMap[key] : defaultFallbackMap[key]);
       // Büro-Format hat nur: Regal, Material, t=, Format, Menge, Abmass X, Abmass Y.
-      // Nicht gemappte Werte dürfen hier nicht auf Abmass-Spalten zurückfallen,
+      // Konsi-Tabellen haben nur: Material ID, Material, Format, Stärke.
+      // Nicht gemappte Werte dürfen hier nicht auf andere Spalten zurückfallen,
       // sonst entstehen z. B. aus 4000/2000 versehentlich Pakete.
-      if (fallbackMode === 'buero' && mappedIndex === undefined) return '';
+      if ((fallbackMode === 'buero' || fallbackMode === 'konsi') && mappedIndex === undefined) return '';
       if (mappedIndex !== undefined) return row[mappedIndex] || '';
     }
     return fallbackIndex >= 0 ? (row[fallbackIndex] || '') : '';
   };
+
+  if (fallbackMode === 'konsi') {
+    const materialId = cleanText(get(['materialid','paketnummern','paketnummer','nummern'], 0));
+    const name = get(['material','name','bezeichnung','werkstoff'], 1) || `Konsi ${index + 1}`;
+    return materialPayload({
+      name,
+      thickness: get(['staerke','stärke','dicke'], 3),
+      format: normalizeFormatFromImportedValues(get(['groesse','größe','format','abmessung'], 2), '', ''),
+      shelf: KONSI_LOCATION,
+      sheetStock: 0,
+      packageStock: 0,
+      stock: materialId ? 1 : 0,
+      packageNumbers: materialId ? [materialId] : [],
+      minStock: 0,
+      storage: 'KONSI',
+      rest: false,
+      type: 'Tafel',
+      unit: 'Pakete'
+    });
+  }
+
   const storageText = cleanText(get(['bereich','lagerbereich','lager','storage'], 7), 'HAUPTLAGER').toUpperCase();
   const storage = storageText.includes('KONSI') ? 'KONSI' : 'HAUPTLAGER';
   const packageNumbers = normalizePackageNumbers(get(['paketnummern','paketnummer','nummern'], 9));
@@ -1255,20 +1279,23 @@ function materialFromImport(row, headerMap = null, index = 0, fallbackMode = 'st
   });
 }
 
-function importMaterialsFromText(tableText, user) {
+function importMaterialsFromText(tableText, user, options = {}) {
   const rows = parseCsvRows(tableText || '');
   if (!rows.length) throw new Error('Keine Tabellen-Zeilen gefunden.');
   const first = rows[0].map(normalizeImportHeaderKey);
-  const knownHeaders = ['material','staerke','groesse','regal','tafeln','pakete','mindestbestand','bereich','resttafel','paketnummern','abmassx','abmassy'];
+  const knownHeaders = ['material','materialid','staerke','groesse','regal','tafeln','pakete','mindestbestand','bereich','resttafel','paketnummern','abmassx','abmassy'];
   const hasHeader = first.some(v => knownHeaders.includes(v));
   const headerMap = hasHeader ? first.reduce((acc, value, index) => { acc[value] = index; return acc; }, {}) : null;
   const dataRows = hasHeader ? rows.slice(1) : rows;
-  const fallbackMode = !hasHeader && dataRows.some(looksLikeBueroImportRow) ? 'buero' : 'standard';
+  const importMode = cleanText(options.mode || '').toUpperCase();
+  const forceKonsiSimple = importMode === 'KONSI' || importMode === 'KONSI_SIMPLE';
+  const fallbackMode = forceKonsiSimple ? 'konsi' : (!hasHeader && dataRows.some(looksLikeBueroImportRow) ? 'buero' : 'standard');
   const created = [];
   const merged = [];
   dataRows.forEach((row, index) => {
     if (!row.some(v => cleanText(v))) return;
     const material = materialFromImport(row, headerMap, index, fallbackMode);
+    if (fallbackMode === 'konsi' && !normalizePackageNumbers(material.packageNumbers).length) throw new Error(`Zeile ${index + 1}: Material ID fehlt.`);
     const duplicate = findDuplicateMaterial(material);
     if (duplicate) {
       mergeMaterialQuantities(duplicate, material);
@@ -2668,7 +2695,7 @@ app.post('/api/admin/materials/delete-all', requireAuth, allowRoles('ADMIN'), (r
 
 app.post('/api/materials/import-table', requireAuth, allowRoles('ADMIN'), (req, res) => {
   try {
-    const { created, merged, activity } = importMaterialsFromText(req.body.table || req.body.csv || '', req.user);
+    const { created, merged, activity } = importMaterialsFromText(req.body.table || req.body.csv || '', req.user, { mode: req.body.mode });
     emitToAll('material:created', { activity, message: `${created.length} Materialien aus Tabelle importiert`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
     emitToAll('state:changed', { reason: 'materials:import-table', version: PROGRAM_VERSION });
     res.status(201).json({ created: created.length, merged: merged.length, version: PROGRAM_VERSION });

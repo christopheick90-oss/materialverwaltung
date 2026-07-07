@@ -1,4 +1,4 @@
-# Teständerungen 0.7.2-test.3
+# Teständerungen 0.7.2-test.4
 
 Basis: letzte funktionierende 0.7.2-Testversion im Master-Design.
 
@@ -22,3 +22,16 @@ Lokal testen:
 4. Wareneingang ohne Bestellung buchen und prüfen, ob das Format angezeigt wird.
 
 Erst nach erfolgreichem Test in GitHub Desktop committen/pushen und Render neu deployen.
+
+
+## Ergänzung 0.7.2-test.4
+
+- Konsi-Lager → Tabelle einfügen nutzt jetzt das gewünschte Format:
+
+```text
+Material ID	Material	Format	Stärke
+```
+
+- `Material ID` wird als Konsi-/Paketnummer gespeichert.
+- Gleiche `Material ID` darf mehrfach vorkommen und wird mehrfach als eigenes Paket übernommen.
+- Der Import bleibt nur für Admin sichtbar/freigegeben.

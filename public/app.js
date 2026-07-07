@@ -2001,6 +2001,7 @@ function normalizeImportHeaderKeyClient(value) {
     .replace(/[^a-z0-9]+/g, '');
   const map = {
     material: 'material', name: 'material', bezeichnung: 'material', werkstoff: 'material', materialname: 'material',
+    materialid: 'materialid', matid: 'materialid', id: 'materialid', nummer: 'materialid', nr: 'materialid', materialnummer: 'materialid',
     staerke: 'staerke', starkemm: 'staerke', staerkemm: 'staerke', dicke: 'staerke', dickemm: 'staerke', t: 'staerke', tmm: 'staerke',
     groesse: 'groesse', grosse: 'groesse', format: 'groesse', abmessung: 'groesse', abmessungen: 'groesse', abmass: 'groesse', abmasse: 'groesse', abmassx: 'abmassx', abmasx: 'abmassx', abmessungx: 'abmassx', abmessx: 'abmassx', x: 'abmassx', abmassy: 'abmassy', abmasy: 'abmassy', abmessungy: 'abmassy', abmessy: 'abmassy', y: 'abmassy',
     regal: 'regal', lagerplatz: 'regal', platz: 'regal', ablage: 'regal', standort: 'regal',
@@ -2117,28 +2118,51 @@ function normalizeFormatFromImportedValuesClient(formatValue, xValue, yValue) {
   return '3000x1500';
 }
 
-function previewMaterialsFromTableText(text) {
+function previewMaterialsFromTableText(text, mode = '') {
   const rows = parsePastedTableRowsClient(text);
   if (!rows.length) return [];
-  const canonical = ['material','staerke','groesse','regal','tafeln','pakete','mindestbestand','bereich','resttafel','paketnummern','abmassx','abmassy'];
+  const canonical = ['material','materialid','staerke','groesse','regal','tafeln','pakete','mindestbestand','bereich','resttafel','paketnummern','abmassx','abmassy'];
   const headerKeys = rows[0].map(normalizeImportHeaderKeyClient);
   const hasHeader = headerKeys.some(key => canonical.includes(key));
   const headerMap = hasHeader ? headerKeys.reduce((acc, key, index) => { acc[key] = index; return acc; }, {}) : null;
   const bueroFallbackMap = { regal: 0, material: 1, staerke: 2, groesse: 3, tafeln: 4, abmassx: 5, abmassy: 6 };
-  const defaultFallbackMap = { material: 0, staerke: 1, groesse: 2, regal: 3, tafeln: 4, pakete: 5, mindestbestand: 6, bereich: 7, resttafel: 8, paketnummern: 9 };
-  const useBueroFallback = !hasHeader && rows.some(looksLikeBueroImportRowClient);
+  const konsiFallbackMap = { materialid: 0, paketnummern: 0, paketnummer: 0, nummern: 0, material: 1, groesse: 2, staerke: 3 };
+  const defaultFallbackMap = { material: 0, staerke: 1, groesse: 2, regal: 3, tafeln: 4, pakete: 5, mindestbestand: 6, bereich: 7, resttafel: 8, paketnummern: 9, materialid: 9 };
+  const forceKonsiSimple = String(mode || '').toUpperCase() === 'KONSI';
+  const useBueroFallback = !forceKonsiSimple && !hasHeader && rows.some(looksLikeBueroImportRowClient);
   const get = (row, key, fallbackIndex = -1) => {
     const normalized = normalizeImportHeaderKeyClient(key);
     if (headerMap) return headerMap[normalized] !== undefined ? (row[headerMap[normalized]] || '') : '';
-    const mappedIndex = useBueroFallback ? bueroFallbackMap[normalized] : defaultFallbackMap[normalized];
+    const mappedIndex = forceKonsiSimple ? konsiFallbackMap[normalized] : (useBueroFallback ? bueroFallbackMap[normalized] : defaultFallbackMap[normalized]);
     // Büro-Format hat nur: Regal, Material, t=, Format, Menge, Abmass X, Abmass Y.
-    // Nicht gemappte Werte dürfen hier nicht auf Abmass-Spalten zurückfallen,
+    // Konsi-Tabellen haben nur: Material ID, Material, Format, Stärke.
+    // Nicht gemappte Werte dürfen hier nicht auf andere Spalten zurückfallen,
     // sonst entstehen z. B. aus 4000/2000 versehentlich Pakete.
-    if (useBueroFallback && mappedIndex === undefined) return '';
+    if ((useBueroFallback || forceKonsiSimple) && mappedIndex === undefined) return '';
     const index = mappedIndex !== undefined ? mappedIndex : fallbackIndex;
     return index >= 0 ? (row[index] || '') : '';
   };
   return (hasHeader ? rows.slice(1) : rows).map((row, index) => {
+    if (forceKonsiSimple) {
+      const materialId = String(get(row, 'materialid', 0) || '').trim();
+      const name = get(row, 'material', 1).trim();
+      const material = {
+        row: index + 1,
+        materialId,
+        name,
+        thickness: normalizeThicknessInput(get(row, 'staerke', 3)),
+        format: normalizeFormatFromImportedValuesClient(get(row, 'groesse', 2), '', ''),
+        shelf: konsiLocation(),
+        sheets: 0,
+        packages: materialId ? 1 : 0,
+        minStock: 0,
+        storage: 'KONSI',
+        rest: false,
+        packageNumbers: materialId ? [materialId] : []
+      };
+      material.error = !materialId ? 'Material ID fehlt' : (!name ? 'Material fehlt' : '');
+      return material;
+    }
     const name = get(row, 'material', 0).trim();
     const storageText = String(get(row, 'bereich', 7) || '').toUpperCase();
     const storage = storageText.includes('KONSI') ? 'KONSI' : 'HAUPTLAGER';
@@ -2162,12 +2186,13 @@ function previewMaterialsFromTableText(text) {
     };
     material.error = name ? '' : 'Material fehlt';
     return material;
-  }).filter(item => item.name || item.thickness || item.sheets || item.packages || item.packageNumbers.length);
+  }).filter(item => item.name || item.thickness || item.sheets || item.packages || item.packageNumbers.length || item.materialId);
 }
 
 window.previewPasteTable = () => {
   const text = ($('#pasteTableText') && $('#pasteTableText').value) || '';
-  const preview = previewMaterialsFromTableText(text);
+  const mode = window.__pasteTableMode || '';
+  const preview = previewMaterialsFromTableText(text, mode);
   const box = $('#pasteTablePreview');
   if (!box) return;
   if (!text.trim()) {
@@ -2176,6 +2201,24 @@ window.previewPasteTable = () => {
   }
   if (!preview.length) {
     box.innerHTML = '<div class="empty">Keine gültigen Zeilen erkannt. Bitte Spalten aus Google Sheets kopieren und einfügen.</div>';
+    return;
+  }
+  if (mode === 'KONSI') {
+    box.innerHTML = `
+      <div class="footer-note">Vorschau: ${preview.length} Konsi-Paket(e) erkannt. Gleiche Material IDs werden als mehrere Pakete übernommen.</div>
+      <table>
+        <thead><tr><th>Zeile</th><th>Material ID</th><th>Material</th><th>Format</th><th>Stärke</th><th>Standort</th><th>Status</th></tr></thead>
+        <tbody>${preview.map(item => `<tr>
+          <td>${item.row}</td>
+          <td><strong>${escapeHtml(item.materialId || (item.packageNumbers && item.packageNumbers[0]) || '-')}</strong></td>
+          <td>${escapeHtml(item.name || '-')}</td>
+          <td>${escapeHtml(item.format || '-')}</td>
+          <td>${escapeHtml(item.thickness || '-')}</td>
+          <td>${escapeHtml(item.shelf || '-')}</td>
+          <td>${item.error ? `<span class="badge red">${escapeHtml(item.error)}</span>` : '<span class="badge green">OK</span>'}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    `;
     return;
   }
   box.innerHTML = `
@@ -2198,18 +2241,26 @@ window.previewPasteTable = () => {
 
 window.openPasteTableModal = () => {
   if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Tabellenimport ist nur für Admin freigegeben.');
+  const konsiMode = currentPage === 'konsi';
+  window.__pasteTableMode = konsiMode ? 'KONSI' : '';
+  const title = konsiMode ? 'Konsi-Tabelle einfügen' : 'Materialien aus Tabelle einfügen';
+  const help = konsiMode
+    ? '<p class="muted">Für das Konsi-Lager diese Spalten aus Excel/Google Sheets kopieren: Material ID · Material · Format · Stärke.</p><div class="notice form-full"><strong>Konsi-Format:</strong> Material ID · Material · Format · Stärke<br><strong>Wichtig:</strong> Material ID ist die Paket-/Materialnummer. Wenn dieselbe Material ID mehrmals vorkommt, wird sie mehrfach als eigenes Paket übernommen.</div>'
+    : '<p class="muted">In Google Sheets die Zeilen markieren, kopieren und hier einfügen. Büro-Tabellen wie Regal · Material · t= · Format · Menge · Abmass X · Abmass Y werden automatisch erkannt und in deine Material-Ordnung übernommen.</p><div class="notice form-full"><strong>Büro-Format möglich:</strong> Regal · Material · t= · Format · Menge · Abmass X · Abmass Y<br><strong>Wichtig:</strong> Nur die Spalte Menge wird als Tafeln übernommen. Abmass X/Y wird nur für die Größe benutzt, nie als Pakete.<br><strong>Speicherung im Programm:</strong> Material · Stärke · Größe · Lagerplatz · Tafeln</div>';
+  const placeholder = konsiMode
+    ? 'Material ID\tMaterial\tFormat\tStärke\nK-100\tS235\t3000x1500\t3 mm\nK-100\tS235\t3000x1500\t3 mm'
+    : 'Regal\tMaterial\tt=\tFormat\tMenge\tAbmass X\tAbmass Y\nRegal 1\tAluminium\t2\tTafel\t12\t3000\t1500';
   openModal(`
-    <h2>Materialien aus Tabelle einfügen</h2>
-    <p class="muted">In Google Sheets die Zeilen markieren, kopieren und hier einfügen. Büro-Tabellen wie Regal · Material · t= · Format · Menge · Abmass X · Abmass Y werden automatisch erkannt und in deine Material-Ordnung übernommen.</p>
-    <div class="notice form-full"><strong>Büro-Format möglich:</strong> Regal · Material · t= · Format · Menge · Abmass X · Abmass Y<br><strong>Wichtig:</strong> Nur die Spalte Menge wird als Tafeln übernommen. Abmass X/Y wird nur für die Größe benutzt, nie als Pakete.<br><strong>Speicherung im Programm:</strong> Material · Stärke · Größe · Lagerplatz · Tafeln</div>
-    <textarea id="pasteTableText" style="min-height:190px" placeholder="Regal\tMaterial\tt=\tFormat\tMenge\tAbmass X\tAbmass Y\nRegal 1\tAluminium\t2\tTafel\t12\t3000\t1500"></textarea>
+    <h2>${title}</h2>
+    ${help}
+    <textarea id="pasteTableText" style="min-height:190px" placeholder="${placeholder}"></textarea>
     <div id="pasteTablePreview" class="paste-preview"><div class="empty">Noch keine Tabelle eingefügt.</div></div>
     <div class="toolbar modal-toolbar modal-toolbar-sticky">
       <button class="ghost" onclick="closeModal()">Abbrechen</button>
       <button class="secondary" onclick="previewPasteTable()">Vorschau prüfen</button>
-      <button class="primary" onclick="importMaterialsFromTable()">Materialien übernehmen</button>
+      <button class="primary" onclick="importMaterialsFromTable()">${konsiMode ? 'Konsi-Pakete übernehmen' : 'Materialien übernehmen'}</button>
     </div>
-    <div class="footer-note">Konsi geht auch: Bereich = KONSI, Pakete/Paketnummern eintragen. Konsi bleibt Standort Garage.</div>
+    <div class="footer-note">${konsiMode ? 'Konsi bleibt Standort Garage. Der Import bleibt nur für Admin freigegeben.' : 'Konsi separat im Konsi-Lager über Material ID · Material · Format · Stärke einfügen.'}</div>
   `);
   $('#pasteTableText').addEventListener('input', () => {
     clearTimeout(window.__pastePreviewTimer);
@@ -2221,15 +2272,16 @@ window.importMaterialsFromTable = async () => {
   if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Tabellenimport ist nur für Admin freigegeben.');
   const table = ($('#pasteTableText') && $('#pasteTableText').value) || '';
   if (!table.trim()) return showToast('Keine Eingabe', 'Bitte die Tabelle aus Google Sheets einfügen.');
-  const preview = previewMaterialsFromTableText(table);
+  const mode = window.__pasteTableMode || '';
+  const preview = previewMaterialsFromTableText(table, mode);
   const errors = preview.filter(item => item.error).length;
   if (!preview.length) return showToast('Keine gültigen Zeilen', 'Es wurden keine Materialzeilen erkannt.');
   if (errors) return showToast('Fehler in Vorschau', 'Bitte zuerst die markierten Zeilen korrigieren.');
-  if (!confirm(`${preview.length} Materialposition(en) aus der Tabelle übernehmen?\n\nDubletten werden zusammengeführt.`)) return;
+  if (!confirm(mode === 'KONSI' ? `${preview.length} Konsi-Paket(e) übernehmen?\n\nGleiche Material IDs werden als mehrere Pakete übernommen.` : `${preview.length} Materialposition(en) aus der Tabelle übernehmen?\n\nDubletten werden zusammengeführt.`)) return;
   try {
-    const data = await api('/api/materials/import-table', { method: 'POST', body: JSON.stringify({ table }) });
+    const data = await api('/api/materials/import-table', { method: 'POST', body: JSON.stringify({ table, mode }) });
     closeModal();
-    showToast('Tabelle übernommen', `${data.created} Materialposition(en) angelegt, ${data.merged || 0} Dublette(n) zusammengeführt.`);
+    showToast('Tabelle übernommen', mode === 'KONSI' ? `${data.created} Konsi-Position(en) angelegt, ${data.merged || 0} Position(en) erweitert.` : `${data.created} Materialposition(en) angelegt, ${data.merged || 0} Dublette(n) zusammengeführt.`);
     materialFilter.text = '';
     materialFilter.status = 'all';
     materialFilter.storage = 'all';
@@ -2237,7 +2289,7 @@ window.importMaterialsFromTable = async () => {
     materialFilter.format = 'all';
     materialFilter.sort = 'size-desc';
     await loadState(true);
-    currentPage = 'materials';
+    currentPage = mode === 'KONSI' ? 'konsi' : 'materials';
     renderCurrentPage();
   } catch (error) {
     showToast('Fehler', error.message);
