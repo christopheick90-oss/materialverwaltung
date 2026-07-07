@@ -1,18 +1,13 @@
 {
-  "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.7.2",
-  "description": "Eckl Eco Technics Materialverwaltung V0.7.2 - Render Root/Public Fix",
+  "name": "eckl-lagerverwaltung-prototyp",
+  "version": "0.7.4",
+  "description": "Eckl Eco Technics Lagerverwaltung Prototyp im Master-Design",
   "main": "server.js",
-  "type": "commonjs",
-  "author": "Eckl Eco Technics",
   "scripts": {
-    "start": "node server.js",
-    "render:start": "node server.js"
+    "start": "node server.js"
   },
-  "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5",
-    "pg": "^8.13.1"
+  "engines": {
+    "node": ">=18"
   },
-  "productName": "Eckl Eco Technics - Materialverwaltung"
+  "license": "UNLICENSED"
 }

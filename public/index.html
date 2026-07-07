@@ -1,86 +1,580 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Eckl Eco Technics - Materialverwaltung</title>
-  <link rel="stylesheet" href="/styles.css?v=0.7.2">
+<meta charset="UTF-8">
+<title>Eckl Eco Technics · Lagerverwaltung v0.7.4</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+/*
+============================================================
+ECKL ECO TECHNICS · LAGERVERWALTUNG MASTER-DESIGN
+Version 0.7.4
+============================================================
+- Dunkle Sidebar
+- Grauer/schwarzer Verlauf
+- Weißer Inhalt
+- Roter Akzent
+- Struktur: .app > .sidebar + .main
+- Karten: .card / .material-card
+- Header: .header
+- Navigation: .nav button
+- Tabellen und Admin-Bereich im gleichen Master-Design
+============================================================
+*/
+:root{--red:#e4002b;--dark:#1b1b1b;--paper:#fff;--line:#ddd;--muted:#666;--green:#167a35;--danger:#8b0000}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#2c2c2c,#0f0f0f);color:#111}
+.app{display:flex;min-height:100vh}
+.sidebar{width:250px;position:fixed;top:0;bottom:0;left:0;background:linear-gradient(180deg,#252525,#111);padding:22px;box-shadow:8px 0 30px rgba(0,0,0,.35);z-index:20}
+.logo{margin-bottom:24px;color:#fff}
+.logo-box{border:2px solid #fff;padding:14px 12px;border-bottom:5px solid var(--red);background:linear-gradient(180deg,#333,#171717);box-shadow:0 8px 18px rgba(0,0,0,.25)}
+.logo-main{font-size:22px;font-weight:900;letter-spacing:.6px;line-height:1.05}.logo-sub{color:#ddd;font-size:12px;font-weight:800;margin-top:7px;letter-spacing:1px}.logo-line{height:4px;background:var(--red);width:88px;margin-top:10px}
+.nav button{width:100%;border:0;background:transparent;color:#eee;text-align:left;padding:14px;border-left:4px solid transparent;cursor:pointer;font-weight:700;margin-bottom:2px}
+.nav button.active,.nav button:hover{background:linear-gradient(90deg,var(--red),transparent);border-left-color:#fff}.nav button.admin-only{display:none}.nav button.admin-only.visible{display:block}
+.profile{position:absolute;left:22px;right:22px;bottom:22px;color:#fff}.profile select{width:100%;padding:10px;margin:6px 0 8px}.profile div{font-size:12px;color:#ddd;font-weight:700;line-height:1.4}
+.main{margin-left:250px;width:calc(100% - 250px);min-height:100vh;background:#f4f4f4;padding:24px}.header{background:linear-gradient(180deg,#2f2f2f,#151515);color:#fff;border-bottom:4px solid var(--red);padding:22px;margin-bottom:18px;box-shadow:0 8px 22px rgba(0,0,0,.18)}
+.header h1{margin:0;font-size:34px}.header p{margin:8px 0 0;color:#ddd;font-weight:700}.version{display:inline-block;margin-top:12px;background:var(--red);color:#fff;padding:5px 9px;font-weight:900;font-size:12px}.searchbar{background:#fff;border:1px solid #ccc;padding:16px;margin-bottom:18px;display:flex;gap:12px;align-items:center;box-shadow:0 6px 16px rgba(0,0,0,.06)}.searchbar input{flex:1;font-size:20px;border:0;outline:0}.searchbar .hint{font-size:12px;color:#666;font-weight:800;white-space:nowrap}
+.card{background:#fff;border:1px solid var(--line);padding:18px;margin-bottom:16px;box-shadow:0 8px 20px rgba(0,0,0,.10)}.card h2{margin:0 0 12px}.card h3{margin:0 0 10px}.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px}.stat{background:linear-gradient(180deg,#2b2b2b,#111);color:#fff;padding:16px;border-bottom:4px solid var(--red);box-shadow:0 8px 18px rgba(0,0,0,.15)}.stat strong{display:block;font-size:28px}.stat span{color:#ddd;font-size:13px;font-weight:800;text-transform:uppercase}.material-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.material-card{background:#fff;border:1px solid #ddd;border-left:5px solid var(--red);padding:16px;box-shadow:0 6px 16px rgba(0,0,0,.08)}.material-card h3{margin:0 0 8px;font-size:22px}.material-card.low{border-left-color:var(--danger)}.material-card.rest{border-left-color:#777}.meta{color:#555;font-size:14px;line-height:1.55}.meta strong{color:#222}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}button.primary{background:var(--red);color:#fff;border:0;padding:11px 14px;cursor:pointer;font-weight:800}button.secondary{background:#222;color:#fff;border:0;padding:11px 14px;cursor:pointer;font-weight:800}button.ghost{background:#f4f4f4;border:1px solid #ccc;padding:10px 13px;cursor:pointer}button.success{background:var(--green)!important;color:#fff!important}button.danger{background:var(--danger)!important;color:#fff!important}.mini{padding:7px 9px!important;font-size:12px}.section{display:none}.section.active{display:block}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:11px;border-bottom:1px solid #e5e5e5;text-align:left;vertical-align:top}th{background:#eee;font-size:13px;text-transform:uppercase}tr:hover td{background:#fafafa}.badge{display:inline-block;background:#222;color:#fff;padding:4px 8px;font-weight:800;font-size:12px}.badge.red{background:var(--red)}.badge.gray{background:#777}.badge.green{background:var(--green)}.badge.danger{background:var(--danger)}.badge.light{background:#eee;color:#222;border:1px solid #ccc}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.form-full{grid-column:1/-1}label{font-weight:700;font-size:13px}input,select,textarea{width:100%;padding:11px;border:1px solid #ccc;font-family:Arial,Helvetica,sans-serif}textarea{min-height:74px}.notice{background:#f7f7f7;border:1px dashed #aaa;padding:12px;font-weight:700;color:#555}.notice.red{border-left:5px solid var(--red);background:#fff}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}.dashboard-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}.quick-list{display:grid;gap:10px}.quick-item{background:#f7f7f7;border-left:5px solid var(--red);padding:12px;font-weight:800}.row-actions{display:flex;gap:6px;flex-wrap:wrap}.footer-note{color:#555;font-weight:700;font-size:13px;margin-top:10px}.admin-box{border-left:6px solid var(--red)}.lock{font-weight:900;color:var(--red)}.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);align-items:center;justify-content:center;z-index:1000;padding:20px}.modal-bg.open{display:flex}.modal{background:#fff;width:min(680px,100%);padding:22px;border-left:6px solid var(--red);max-height:90vh;overflow:auto}.modal h2{margin-top:0}.regal-group{margin-bottom:18px;border:1px solid #ddd;background:#fff}.regal-head{background:linear-gradient(180deg,#2f2f2f,#151515);color:#fff;border-bottom:4px solid var(--red);padding:12px 14px;font-weight:900;display:flex;justify-content:space-between;gap:12px}.regal-body{padding:14px}.hidden{display:none!important}
+@media(max-width:1100px){.grid{grid-template-columns:repeat(2,1fr)}.dashboard-grid{grid-template-columns:1fr}}
+@media(max-width:900px){.sidebar{position:relative;width:100%}.main{margin-left:0;width:100%}.app{display:block}.grid,.form-grid{grid-template-columns:1fr}.profile{position:static;margin-top:18px}.searchbar{display:block}.searchbar input{margin-top:8px}}
+</style>
 </head>
 <body>
-  <div id="loginScreen" class="login-screen">
-    <div class="login-card">
-      <div class="login-logo"><img src="/logo.png" alt="Eckl Eco Technics"></div>
-      <h1>Materialverwaltung</h1>
-      <p class="muted">Anmeldung nach Bereich. Danach wird die Oberfläche automatisch passend freigeschaltet.</p>
-      <form id="loginForm" class="login-form">
-        <label>Benutzer</label>
-        <input id="username" autocomplete="username" placeholder="admin / laser / buero / chef" required>
-        <label>Passwort</label>
-        <input id="password" type="password" autocomplete="current-password" placeholder="admin123 / laser123 / buero123 / chef123" required>
-        <button class="primary full" type="submit">Anmelden</button>
-      </form>
-      <div class="notice small">
-        <strong>Testzugänge:</strong><br>
-        Admin: <code>admin</code> / <code>admin123</code><br>
-        Laser: <code>laser</code> / <code>laser123</code><br>
-        Büro: <code>buero</code> / <code>buero123</code><br>
-        Chef: <code>chef</code> / <code>chef123</code>
+<div class="app">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-box">
+        <div class="logo-main">ECKL<br>ECO TECHNICS</div>
+        <div class="logo-sub">LAGERVERWALTUNG</div>
+        <div class="logo-line"></div>
       </div>
-      <div id="loginError" class="error"></div>
     </div>
-  </div>
+    <nav class="nav" id="nav">
+      <button class="active" data-section="dashboard">Dashboard</button>
+      <button data-section="material">Material</button>
+      <button data-section="bestellungen">Bestellungen</button>
+      <button data-section="inventur">Inventur</button>
+      <button data-section="konsi">Konsi-Lager</button>
+      <button data-section="historie">Historie</button>
+      <button data-section="profile">Profile</button>
+      <button data-section="einstellungen">Einstellungen</button>
+    </nav>
+    <div class="profile">
+      <label>Profil</label>
+      <select id="profileSelect">
+        <option value="halle">Halle / Standard</option>
+        <option value="inventur">Inventur</option>
+        <option value="buero">Büro</option>
+        <option value="admin">Admin</option>
+      </select>
+      <div id="connectionState">Lokaler Prototyp · Daten im Browser gespeichert</div>
+    </div>
+  </aside>
 
-  <div id="app" class="app hidden">
-    <aside class="sidebar">
-      <div class="logo"><img src="/logo.png" alt="Eckl Eco Technics"></div>
-      <nav class="nav" id="nav"></nav>
-      <div class="profile">
-        <label>Angemeldet als</label>
-        <div class="profile-name" id="profileName">-</div>
-        <div id="roleBadge" class="role-badge">-</div>
-        <div id="appVersion" class="version-badge">Version 0.7.2</div>
-        <div id="serverModeBadge" class="version-badge server-mode-badge">Server: -</div>
-        <div class="connection"><span id="connectionDot" class="dot"></span><span id="connectionText">Verbinde...</span></div>
-        <button class="ghost logout" id="logoutBtn">Abmelden</button>
+  <main class="main">
+    <section class="section active" id="section-dashboard">
+      <div class="header">
+        <h1>Lagerverwaltung</h1>
+        <p>Dashboard im Eckl Master-Design · Material, Warnungen, Bestellungen und Konsi-Lager</p>
+        <span class="version">Version 0.7.4</span>
       </div>
-    </aside>
+      <div class="grid" id="statsGrid"></div>
+      <div class="dashboard-grid">
+        <div class="card">
+          <h2>Aktuelle Warnungen</h2>
+          <div id="dashboardWarnings" class="quick-list"></div>
+          <div class="footer-note">Resttafeln werden nicht in Warnungen und Bestellungen aufgenommen.</div>
+        </div>
+        <div class="card">
+          <h2>Letzte Aktivitäten</h2>
+          <div id="latestActivities" class="quick-list"></div>
+        </div>
+      </div>
+    </section>
 
-    <main class="main">
-      <section class="header rounded">
-        <img src="/logo.png" alt="Eckl Eco Technics">
-        <div class="header-row">
-          <div>
-            <h1 id="pageTitle">Dashboard</h1>
-            <p id="pageSubtitle">Live synchronisierte Materialverwaltung</p>
+    <section class="section" id="section-material">
+      <div class="header">
+        <h1>Material</h1>
+        <p>Materialkarten jetzt mit Format, damit gleiche Nummern und ähnliche Materialien besser unterscheidbar sind.</p>
+      </div>
+      <div class="searchbar">
+        <span class="badge red">Suche</span>
+        <input id="materialSearch" placeholder="Nummer, Material, Format, Stärke, Regal suchen ...">
+        <span class="hint">Format wird durchsucht</span>
+      </div>
+      <div class="toolbar">
+        <button class="primary" id="btnOpenMaterialModal">Material hinzufügen</button>
+        <button class="secondary" id="btnResetDemo">Demo-Daten zurücksetzen</button>
+        <button class="ghost" id="btnExportData">Daten exportieren</button>
+      </div>
+      <div class="material-grid" id="materialGrid"></div>
+    </section>
+
+    <section class="section" id="section-bestellungen">
+      <div class="header">
+        <h1>Bestellungen</h1>
+        <p>Material unter Mindestbestand kann als bestellt markiert werden. Bestelldatum wird automatisch gesetzt.</p>
+      </div>
+      <div class="card">
+        <h2>Warnung & Bestellung</h2>
+        <div id="ordersTable"></div>
+      </div>
+    </section>
+
+    <section class="section" id="section-inventur">
+      <div class="header">
+        <h1>Inventur</h1>
+        <p>Schnelle Übersicht als Tabelle. Format ist als eigene Spalte enthalten.</p>
+      </div>
+      <div class="card">
+        <h2>Inventurliste</h2>
+        <div id="inventoryTable"></div>
+      </div>
+    </section>
+
+    <section class="section" id="section-konsi">
+      <div class="header">
+        <h1>Konsi-Lager</h1>
+        <p>Konsi-Lager ist für alle Profile sichtbar. Tabelleneinfügung, Duplizieren und Löschen sind nur für Admin freigegeben.</p>
+        <span class="version">Tabelle sichtbar · Einfügen nur Admin</span>
+      </div>
+      <div id="konsiLocked" class="card notice red hidden">
+        <span class="lock">Nur Admin:</span> Neue Konsi-Tabelleneinträge einfügen, duplizieren oder löschen. Die Tabelle bleibt für alle sichtbar.
+      </div>
+      <div id="konsiContent">
+        <div class="card admin-box" id="konsiAdminForm">
+          <h2>Konsi-Eintrag hinzufügen</h2>
+          <div class="notice">Die Nummer darf mehrfach vorkommen. Unterscheidung über Material, Format, Stärke und interne ID.</div>
+          <div class="form-grid" style="margin-top:14px">
+            <div><label>Nummer</label><input id="kNummer" placeholder="z. B. K-104"></div>
+            <div><label>Material</label><input id="kMaterial" placeholder="z. B. S235 / 1.4301"></div>
+            <div><label>Format</label><input id="kFormat" placeholder="z. B. 3000 x 1500"></div>
+            <div><label>Stärke</label><input id="kStaerke" placeholder="z. B. 3 mm"></div>
+            <div><label>Anzahl</label><input id="kAnzahl" type="number" min="0" value="1"></div>
+            <div><label>Lieferant/Kunde</label><input id="kLieferant" placeholder="z. B. Kunde / Büro"></div>
+            <div class="form-full"><label>Bemerkung</label><textarea id="kBemerkung" placeholder="Bemerkung zum Konsi-Material"></textarea></div>
           </div>
-          <div class="header-actions">
-            <div class="live-pill"><span class="pulse"></span> Live-Meldungen</div>
-            <button class="secondary" id="refreshBtn">Aktualisieren</button>
+          <div class="actions">
+            <button class="primary" id="btnAddKonsi">In Tabelle einfügen</button>
+            <button class="ghost" id="btnClearKonsiForm">Felder leeren</button>
           </div>
         </div>
-      </section>
+        <div class="card">
+          <h2>Konsi-Tabelle</h2>
+          <div class="searchbar" style="box-shadow:none;margin-bottom:12px">
+            <span class="badge red">Filter</span>
+            <input id="konsiSearch" placeholder="Nummer, Material, Format, Kunde suchen ...">
+          </div>
+          <div id="konsiTable"></div>
+        </div>
+      </div>
+    </section>
 
-      <section id="dashboard" class="section active"></section>
-      <section id="materials" class="section"></section>
-      <section id="konsi" class="section"></section>
-      <section id="inventory" class="section"></section>
-      <section id="orders" class="section"></section>
-      <section id="history" class="section"></section>
-      <section id="admin" class="section"></section>
-      <section id="adminMaterials" class="section"></section>
-      <section id="users" class="section"></section>
-      <section id="adminSettings" class="section"></section>
-      <section id="adminBackup" class="section"></section>
-      <section id="adminImportExport" class="section"></section>
-      <section id="adminArchive" class="section"></section>
-      <section id="adminLog" class="section"></section>
-    </main>
+    <section class="section" id="section-historie">
+      <div class="header">
+        <h1>Historie</h1>
+        <p>Letzte Aktionen ohne überlange Bestandszahlen in den Karten.</p>
+      </div>
+      <div class="card">
+        <h2>Aktivitäten</h2>
+        <div id="historyTable"></div>
+      </div>
+    </section>
+
+    <section class="section" id="section-profile">
+      <div class="header">
+        <h1>Profile</h1>
+        <p>Prototyp-Profile für Halle, Inventur, Büro und Admin.</p>
+      </div>
+      <div class="card">
+        <h2>Profil auswählen</h2>
+        <p>Das aktuelle Profil steuerst du links unten. Das Konsi-Lager ist für alle sichtbar; Einfügen, Duplizieren und Löschen ist nur Admin.</p>
+        <table>
+          <thead><tr><th>Profil</th><th>Zweck</th><th>Konsi-Lager</th><th>Tabelleneinfügung</th></tr></thead>
+          <tbody>
+            <tr><td>Halle / Standard</td><td>Material suchen, Bestände ansehen, Entnahmen erfassen</td><td><span class="badge green">sichtbar</span></td><td><span class="badge gray">nein</span></td></tr>
+            <tr><td>Inventur</td><td>Inventurübersicht und Zählung</td><td><span class="badge green">sichtbar</span></td><td><span class="badge gray">nein</span></td></tr>
+            <tr><td>Büro</td><td>Bestellungen prüfen</td><td><span class="badge green">sichtbar</span></td><td><span class="badge gray">nein</span></td></tr>
+            <tr><td>Admin</td><td>Alle Bereiche, Konsi-Lager und Tabellenpflege</td><td><span class="badge green">sichtbar</span></td><td><span class="badge green">ja</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section" id="section-einstellungen">
+      <div class="header">
+        <h1>Einstellungen</h1>
+        <p>Lokaler Prototyp. Änderungen werden im Browser gespeichert.</p>
+      </div>
+      <div class="card">
+        <h2>Render-Prüfung</h2>
+        <p>Nach dem Hochladen kannst du auf deiner Render-Adresse prüfen:</p>
+        <div class="notice">/debug/render</div>
+        <p class="footer-note">Dort muss stehen, dass public und index.html gefunden wurden.</p>
+      </div>
+      <div class="card">
+        <h2>Daten</h2>
+        <div class="actions">
+          <button class="secondary" id="btnDownloadJson">JSON herunterladen</button>
+          <button class="danger" id="btnClearStorage">Lokale Daten löschen</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-bg" id="materialModal">
+  <div class="modal">
+    <h2>Material hinzufügen / bearbeiten</h2>
+    <div class="form-grid">
+      <div><label>Nummer</label><input id="mNummer" placeholder="z. B. M-104"></div>
+      <div><label>Material</label><input id="mMaterial" placeholder="z. B. S235"></div>
+      <div><label>Format</label><input id="mFormat" placeholder="z. B. 3000 x 1500"></div>
+      <div><label>Stärke</label><input id="mStaerke" placeholder="z. B. 3 mm"></div>
+      <div><label>Regal</label><input id="mRegal" placeholder="z. B. Regal 1"></div>
+      <div><label>Bestand</label><input id="mBestand" type="number" min="0" value="1"></div>
+      <div><label>Mindestbestand</label><input id="mMin" type="number" min="0" value="1"></div>
+      <div><label>Typ</label><select id="mTyp"><option value="normal">Normalmaterial</option><option value="rest">Resttafel</option></select></div>
+      <div class="form-full"><label>Bemerkung</label><textarea id="mBemerkung" placeholder="Optional"></textarea></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="btnSaveMaterial">Speichern</button>
+      <button class="ghost" id="btnCloseMaterialModal">Abbrechen</button>
+    </div>
   </div>
+</div>
 
-  <div id="toastArea" class="toast-area"></div>
-  <div id="modal" class="modal-bg"><div class="modal" id="modalInner"></div></div>
+<script>
+const VERSION = '0.7.4';
+// Speicher-Key bleibt bewusst gleich, damit Daten aus v0.7.3 erhalten bleiben.
+const STORAGE_KEY = 'eckl_lagerverwaltung_v073';
+let activeSection = 'dashboard';
+let currentRole = 'halle';
+let editMaterialId = null;
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=0.7.2"></script>
+const defaultState = {
+  materials: [
+    {id:'mat_001', nummer:'M-104', material:'S235', format:'3000 x 1500', staerke:'3 mm', regal:'Regal 1', bestand:5, min:8, typ:'normal', bemerkung:'Standardtafel', bestellt:false, bestelltAm:''},
+    {id:'mat_002', nummer:'M-104', material:'1.4301', format:'2500 x 1250', staerke:'2 mm', regal:'Regal 2', bestand:12, min:5, typ:'normal', bemerkung:'Gleiche Nummer als Test', bestellt:false, bestelltAm:''},
+    {id:'mat_003', nummer:'M-211', material:'AlMg3', format:'2000 x 1000', staerke:'4 mm', regal:'Regal 3', bestand:2, min:4, typ:'normal', bemerkung:'Unter Mindestbestand', bestellt:false, bestelltAm:''},
+    {id:'mat_004', nummer:'R-017', material:'S235 Resttafel', format:'920 x 430', staerke:'3 mm', regal:'Restregal A', bestand:1, min:5, typ:'rest', bemerkung:'Resttafel: keine Warnung', bestellt:false, bestelltAm:''},
+    {id:'mat_005', nummer:'M-310', material:'1.4404', format:'3000 x 1500', staerke:'5 mm', regal:'Regal 4', bestand:9, min:3, typ:'normal', bemerkung:'Edelstahl', bestellt:false, bestelltAm:''},
+    {id:'mat_006', nummer:'M-411', material:'DC01', format:'2500 x 1250', staerke:'1 mm', regal:'Regal 5', bestand:3, min:6, typ:'normal', bemerkung:'Nachbestellen prüfen', bestellt:true, bestelltAm:new Date().toLocaleDateString('de-DE')}
+  ],
+  konsi: [
+    {id:'konsi_001', nummer:'K-104', material:'S235', format:'3000 x 1500', staerke:'3 mm', anzahl:2, lieferant:'Kunde A', bemerkung:'Konsi-Material Muster'},
+    {id:'konsi_002', nummer:'K-104', material:'1.4301', format:'2500 x 1250', staerke:'2 mm', anzahl:1, lieferant:'Kunde B', bemerkung:'Gleiche Nummer erlaubt'},
+    {id:'konsi_003', nummer:'K-220', material:'AlMg3', format:'2000 x 1000', staerke:'4 mm', anzahl:3, lieferant:'Büro', bemerkung:'Für Laser vorgemerkt'}
+  ],
+  history: [
+    {time:new Date().toLocaleString('de-DE'), user:'System', action:'Version 0.7.4 geladen'},
+    {time:new Date().toLocaleString('de-DE'), user:'Admin', action:'Konsi-Lager für alle sichtbar'},
+    {time:new Date().toLocaleString('de-DE'), user:'Halle', action:'Format in Materialkarten aktiviert'}
+  ]
+};
+
+let state = loadState();
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return structuredClone(defaultState);
+    const parsed = JSON.parse(raw);
+    return {
+      materials: Array.isArray(parsed.materials) ? parsed.materials : structuredClone(defaultState.materials),
+      konsi: Array.isArray(parsed.konsi) ? parsed.konsi : structuredClone(defaultState.konsi),
+      history: Array.isArray(parsed.history) ? parsed.history : structuredClone(defaultState.history)
+    };
+  }catch(e){
+    return structuredClone(defaultState);
+  }
+}
+function saveState(){localStorage.setItem(STORAGE_KEY, JSON.stringify(state));}
+function uid(prefix){return prefix + '_' + Date.now() + '_' + Math.floor(Math.random()*10000);}
+function today(){return new Date().toLocaleDateString('de-DE');}
+function now(){return new Date().toLocaleString('de-DE');}
+function addHistory(action){state.history.unshift({time:now(), user:profileName(), action}); state.history = state.history.slice(0,80); saveState(); renderAll();}
+function profileName(){return document.getElementById('profileSelect')?.selectedOptions[0]?.textContent || 'Halle / Standard';}
+function isAdmin(){return currentRole === 'admin';}
+function normalMaterials(){return state.materials.filter(m => m.typ !== 'rest');}
+function lowMaterials(){return normalMaterials().filter(m => Number(m.bestand) < Number(m.min));}
+function escapeHtml(value){return String(value ?? '').replace(/[&<>'"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[s]));}
+
+function setSection(section){
+  activeSection = section;
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  const target = document.getElementById('section-' + section);
+  if(target) target.classList.add('active');
+  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.section === section));
+  renderAll();
+}
+
+function updateAdminVisibility(){
+  document.querySelectorAll('.admin-only').forEach(btn => btn.classList.toggle('visible', isAdmin()));
+  const locked = document.getElementById('konsiLocked');
+  const form = document.getElementById('konsiAdminForm');
+  if(locked){
+    locked.classList.toggle('hidden', isAdmin());
+  }
+  if(form){
+    form.classList.toggle('hidden', !isAdmin());
+  }
+  document.getElementById('connectionState').textContent = isAdmin() ? 'Admin aktiv · Konsi-Einfügung frei' : 'Konsi sichtbar · Einfügen nur Admin';
+}
+
+function renderStats(){
+  const stats = [
+    ['Material gesamt', state.materials.length],
+    ['Normalmaterial', normalMaterials().length],
+    ['Warnungen', lowMaterials().length],
+    ['Bestellt', normalMaterials().filter(m => m.bestellt).length],
+    ['Konsi', state.konsi.length]
+  ];
+  document.getElementById('statsGrid').innerHTML = stats.map(([label,value]) => `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`).join('');
+}
+
+function renderDashboard(){
+  const warnings = lowMaterials();
+  const container = document.getElementById('dashboardWarnings');
+  if(!warnings.length){
+    container.innerHTML = `<div class="quick-item">Keine offenen Warnungen für Normalmaterial.</div>`;
+  }else{
+    container.innerHTML = warnings.map(m => `<div class="quick-item">${escapeHtml(m.nummer)} · ${escapeHtml(m.material)} · Format ${escapeHtml(m.format)} · ${escapeHtml(m.staerke)} · Bestand ${m.bestand}/${m.min}</div>`).join('');
+  }
+  document.getElementById('latestActivities').innerHTML = state.history.slice(0,6).map(h => `<div class="quick-item">${escapeHtml(h.time)}<br>${escapeHtml(h.user)} · ${escapeHtml(h.action)}</div>`).join('');
+}
+
+function materialMatches(m, query){
+  if(!query) return true;
+  const hay = [m.nummer,m.material,m.format,m.staerke,m.regal,m.bemerkung,m.typ].join(' ').toLowerCase();
+  return hay.includes(query.toLowerCase());
+}
+function renderMaterials(){
+  const q = document.getElementById('materialSearch')?.value || '';
+  const filtered = state.materials.filter(m => materialMatches(m,q));
+  const grid = document.getElementById('materialGrid');
+  if(!filtered.length){grid.innerHTML = `<div class="card">Keine Materialien gefunden.</div>`;return;}
+  grid.innerHTML = filtered.map(m => {
+    const low = m.typ !== 'rest' && Number(m.bestand) < Number(m.min);
+    const cls = m.typ === 'rest' ? 'rest' : low ? 'low' : '';
+    const status = m.typ === 'rest' ? '<span class="badge gray">Resttafel</span>' : low ? '<span class="badge danger">Warnung</span>' : '<span class="badge green">OK</span>';
+    const order = m.bestellt ? `<span class="badge green">Bestellt ${escapeHtml(m.bestelltAm)}</span>` : '';
+    return `<div class="material-card ${cls}">
+      <h3>${escapeHtml(m.material)}</h3>
+      <div class="meta">
+        ${status} ${order}<br>
+        <strong>Nummer:</strong> ${escapeHtml(m.nummer)}<br>
+        <strong>Format:</strong> ${escapeHtml(m.format)}<br>
+        <strong>Stärke:</strong> ${escapeHtml(m.staerke)}<br>
+        <strong>Regal:</strong> ${escapeHtml(m.regal)}<br>
+        <strong>Bestand:</strong> ${escapeHtml(m.bestand)} · <strong>Min:</strong> ${escapeHtml(m.min)}<br>
+        <strong>Hinweis:</strong> ${escapeHtml(m.bemerkung || '-')}
+      </div>
+      <div class="actions">
+        <button class="primary mini" onclick="openEditMaterial('${m.id}')">Bearbeiten</button>
+        <button class="secondary mini" onclick="takeMaterial('${m.id}')">Entnahme</button>
+        ${m.typ !== 'rest' && low && !m.bestellt ? `<button class="ghost mini" onclick="markOrdered('${m.id}')">Bestellt</button>` : ''}
+        <button class="danger mini" onclick="deleteMaterial('${m.id}')">Löschen</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderOrders(){
+  const items = lowMaterials();
+  const el = document.getElementById('ordersTable');
+  if(!items.length){el.innerHTML = `<div class="notice">Keine offenen Warnungen. Resttafeln werden hier bewusst nicht angezeigt.</div>`;return;}
+  el.innerHTML = `<table><thead><tr><th>Nummer</th><th>Material</th><th>Format</th><th>Stärke</th><th>Bestand</th><th>Status</th><th>Aktionen</th></tr></thead><tbody>${items.map(m => `<tr>
+    <td>${escapeHtml(m.nummer)}</td><td>${escapeHtml(m.material)}</td><td>${escapeHtml(m.format)}</td><td>${escapeHtml(m.staerke)}</td><td>${m.bestand}/${m.min}</td>
+    <td>${m.bestellt ? `<span class="badge green">Bestellt ${escapeHtml(m.bestelltAm)}</span>` : '<span class="badge red">Offen</span>'}</td>
+    <td><div class="row-actions">${m.bestellt ? `<button class="ghost mini" onclick="unmarkOrdered('${m.id}')">Zurücksetzen</button>` : `<button class="primary mini" onclick="markOrdered('${m.id}')">Bestellt</button>`}</div></td>
+  </tr>`).join('')}</tbody></table>`;
+}
+
+function renderInventory(){
+  const rows = state.materials.map(m => `<tr><td>${escapeHtml(m.nummer)}</td><td>${escapeHtml(m.material)}</td><td>${escapeHtml(m.format)}</td><td>${escapeHtml(m.staerke)}</td><td>${escapeHtml(m.regal)}</td><td>${escapeHtml(m.bestand)}</td><td>${m.typ === 'rest' ? '<span class="badge gray">Resttafel</span>' : '<span class="badge light">Normal</span>'}</td></tr>`).join('');
+  document.getElementById('inventoryTable').innerHTML = `<table><thead><tr><th>Nummer</th><th>Material</th><th>Format</th><th>Stärke</th><th>Regal</th><th>Bestand</th><th>Typ</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function konsiMatches(k, query){
+  if(!query) return true;
+  const hay = [k.nummer,k.material,k.format,k.staerke,k.lieferant,k.bemerkung].join(' ').toLowerCase();
+  return hay.includes(query.toLowerCase());
+}
+function renderKonsi(){
+  updateAdminVisibility();
+  const q = document.getElementById('konsiSearch')?.value || '';
+  const rows = state.konsi.filter(k => konsiMatches(k,q));
+  const el = document.getElementById('konsiTable');
+  if(!rows.length){el.innerHTML = `<div class="notice">Keine Konsi-Einträge gefunden.</div>`;return;}
+  const actionHeader = isAdmin() ? '<th>Aktionen</th>' : '<th>Status</th>';
+  el.innerHTML = `<table><thead><tr><th>Nummer</th><th>Material</th><th>Format</th><th>Stärke</th><th>Anzahl</th><th>Lieferant/Kunde</th><th>Bemerkung</th>${actionHeader}</tr></thead><tbody>${rows.map(k => {
+    const actions = isAdmin()
+      ? `<td><div class="row-actions"><button class="secondary mini" onclick="duplicateKonsi('${k.id}')">Duplizieren</button><button class="danger mini" onclick="deleteKonsi('${k.id}')">Löschen</button></div></td>`
+      : `<td><span class="badge light">nur Ansicht</span></td>`;
+    return `<tr>
+      <td><strong>${escapeHtml(k.nummer)}</strong><br><small>${escapeHtml(k.id)}</small></td>
+      <td>${escapeHtml(k.material)}</td><td>${escapeHtml(k.format)}</td><td>${escapeHtml(k.staerke)}</td><td>${escapeHtml(k.anzahl)}</td><td>${escapeHtml(k.lieferant)}</td><td>${escapeHtml(k.bemerkung || '-')}</td>
+      ${actions}
+    </tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+function renderHistory(){
+  const rows = state.history.map(h => `<tr><td>${escapeHtml(h.time)}</td><td>${escapeHtml(h.user)}</td><td>${escapeHtml(h.action)}</td></tr>`).join('');
+  document.getElementById('historyTable').innerHTML = `<table><thead><tr><th>Zeit</th><th>Profil</th><th>Aktion</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderAll(){
+  updateAdminVisibility();
+  renderStats();
+  renderDashboard();
+  renderMaterials();
+  renderOrders();
+  renderInventory();
+  renderKonsi();
+  renderHistory();
+}
+
+function openMaterialModal(){
+  editMaterialId = null;
+  ['mNummer','mMaterial','mFormat','mStaerke','mRegal','mBemerkung'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('mBestand').value = 1;
+  document.getElementById('mMin').value = 1;
+  document.getElementById('mTyp').value = 'normal';
+  document.getElementById('materialModal').classList.add('open');
+}
+function openEditMaterial(id){
+  const m = state.materials.find(x => x.id === id); if(!m) return;
+  editMaterialId = id;
+  document.getElementById('mNummer').value = m.nummer;
+  document.getElementById('mMaterial').value = m.material;
+  document.getElementById('mFormat').value = m.format;
+  document.getElementById('mStaerke').value = m.staerke;
+  document.getElementById('mRegal').value = m.regal;
+  document.getElementById('mBestand').value = m.bestand;
+  document.getElementById('mMin').value = m.min;
+  document.getElementById('mTyp').value = m.typ;
+  document.getElementById('mBemerkung').value = m.bemerkung || '';
+  document.getElementById('materialModal').classList.add('open');
+}
+function closeMaterialModal(){document.getElementById('materialModal').classList.remove('open');}
+function saveMaterial(){
+  const data = {
+    nummer: document.getElementById('mNummer').value.trim() || 'ohne Nummer',
+    material: document.getElementById('mMaterial').value.trim() || 'Material',
+    format: document.getElementById('mFormat').value.trim() || 'ohne Format',
+    staerke: document.getElementById('mStaerke').value.trim() || '-',
+    regal: document.getElementById('mRegal').value.trim() || '-',
+    bestand: Number(document.getElementById('mBestand').value || 0),
+    min: Number(document.getElementById('mMin').value || 0),
+    typ: document.getElementById('mTyp').value,
+    bemerkung: document.getElementById('mBemerkung').value.trim()
+  };
+  if(editMaterialId){
+    const idx = state.materials.findIndex(m => m.id === editMaterialId);
+    if(idx >= 0) state.materials[idx] = {...state.materials[idx], ...data};
+    addHistory(`Material bearbeitet: ${data.nummer} · ${data.material} · Format ${data.format}`);
+  }else{
+    state.materials.unshift({id:uid('mat'), ...data, bestellt:false, bestelltAm:''});
+    addHistory(`Material hinzugefügt: ${data.nummer} · ${data.material} · Format ${data.format}`);
+  }
+  saveState(); closeMaterialModal(); renderAll();
+}
+function takeMaterial(id){
+  const m = state.materials.find(x => x.id === id); if(!m) return;
+  if(Number(m.bestand) > 0) m.bestand = Number(m.bestand) - 1;
+  saveState(); addHistory(`Entnahme: ${m.nummer} · ${m.material} · ${m.format}`);
+}
+function deleteMaterial(id){
+  const m = state.materials.find(x => x.id === id); if(!m) return;
+  if(!confirm(`Material löschen?\n${m.nummer} · ${m.material} · ${m.format}`)) return;
+  state.materials = state.materials.filter(x => x.id !== id);
+  saveState(); addHistory(`Material gelöscht: ${m.nummer} · ${m.material} · ${m.format}`);
+}
+function markOrdered(id){
+  const m = state.materials.find(x => x.id === id); if(!m) return;
+  m.bestellt = true; m.bestelltAm = today(); saveState(); addHistory(`Bestellt markiert: ${m.nummer} · ${m.material} · ${m.format}`);
+}
+function unmarkOrdered(id){
+  const m = state.materials.find(x => x.id === id); if(!m) return;
+  m.bestellt = false; m.bestelltAm = ''; saveState(); addHistory(`Bestellung zurückgesetzt: ${m.nummer} · ${m.material} · ${m.format}`);
+}
+
+function addKonsi(){
+  if(!isAdmin()){alert('Nur Admin.');return;}
+  const data = {
+    id: uid('konsi'),
+    nummer: document.getElementById('kNummer').value.trim() || 'ohne Nummer',
+    material: document.getElementById('kMaterial').value.trim() || 'Material',
+    format: document.getElementById('kFormat').value.trim() || 'ohne Format',
+    staerke: document.getElementById('kStaerke').value.trim() || '-',
+    anzahl: Number(document.getElementById('kAnzahl').value || 0),
+    lieferant: document.getElementById('kLieferant').value.trim() || '-',
+    bemerkung: document.getElementById('kBemerkung').value.trim()
+  };
+  state.konsi.unshift(data);
+  saveState(); clearKonsiForm(); addHistory(`Konsi eingefügt: ${data.nummer} · ${data.material} · Format ${data.format}`);
+}
+function clearKonsiForm(){['kNummer','kMaterial','kFormat','kStaerke','kLieferant','kBemerkung'].forEach(id => document.getElementById(id).value = ''); document.getElementById('kAnzahl').value = 1;}
+function deleteKonsi(id){
+  if(!isAdmin()) return;
+  const k = state.konsi.find(x => x.id === id); if(!k) return;
+  if(!confirm(`Konsi-Eintrag löschen?\n${k.nummer} · ${k.material} · ${k.format}`)) return;
+  state.konsi = state.konsi.filter(x => x.id !== id);
+  saveState(); addHistory(`Konsi gelöscht: ${k.nummer} · ${k.material} · ${k.format}`);
+}
+function duplicateKonsi(id){
+  if(!isAdmin()) return;
+  const k = state.konsi.find(x => x.id === id); if(!k) return;
+  const copy = {...k, id:uid('konsi'), bemerkung:(k.bemerkung || '') + ' · Kopie'};
+  state.konsi.unshift(copy);
+  saveState(); addHistory(`Konsi dupliziert: ${copy.nummer} · ${copy.material} · Format ${copy.format}`);
+}
+
+function resetDemo(){
+  if(!confirm('Demo-Daten zurücksetzen?')) return;
+  state = structuredClone(defaultState); saveState(); addHistory('Demo-Daten zurückgesetzt'); renderAll();
+}
+function downloadJson(){
+  const blob = new Blob([JSON.stringify(state,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'eckl-lagerverwaltung-daten-v0.7.4.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function clearStorage(){
+  if(!confirm('Lokale Browser-Daten wirklich löschen?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  state = structuredClone(defaultState);
+  renderAll();
+}
+
+window.openEditMaterial = openEditMaterial;
+window.takeMaterial = takeMaterial;
+window.deleteMaterial = deleteMaterial;
+window.markOrdered = markOrdered;
+window.unmarkOrdered = unmarkOrdered;
+window.deleteKonsi = deleteKonsi;
+window.duplicateKonsi = duplicateKonsi;
+
+document.querySelectorAll('.nav button').forEach(btn => btn.addEventListener('click', () => setSection(btn.dataset.section)));
+document.getElementById('profileSelect').addEventListener('change', e => {currentRole = e.target.value; updateAdminVisibility(); renderAll(); addHistory(`Profil gewechselt: ${profileName()}`);});
+document.getElementById('materialSearch').addEventListener('input', renderMaterials);
+document.getElementById('konsiSearch').addEventListener('input', renderKonsi);
+document.getElementById('btnOpenMaterialModal').addEventListener('click', openMaterialModal);
+document.getElementById('btnCloseMaterialModal').addEventListener('click', closeMaterialModal);
+document.getElementById('btnSaveMaterial').addEventListener('click', saveMaterial);
+document.getElementById('btnResetDemo').addEventListener('click', resetDemo);
+document.getElementById('btnExportData').addEventListener('click', downloadJson);
+document.getElementById('btnDownloadJson').addEventListener('click', downloadJson);
+document.getElementById('btnClearStorage').addEventListener('click', clearStorage);
+document.getElementById('btnAddKonsi').addEventListener('click', addKonsi);
+document.getElementById('btnClearKonsiForm').addEventListener('click', clearKonsiForm);
+document.getElementById('materialModal').addEventListener('click', e => {if(e.target.id === 'materialModal') closeMaterialModal();});
+
+renderAll();
+</script>
 </body>
 </html>
