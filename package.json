@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.8.5",
-  "description": "Eckl Eco Technics Materialverwaltung V0.8.5 - Suche mit Material-Synonymen und genauer Stärke-Filterung",
+  "version": "0.8.8",
+  "description": "Eckl Eco Technics Materialverwaltung V0.8.8 - Gewichtsangaben pro Material",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

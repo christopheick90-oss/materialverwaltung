@@ -245,3 +245,8 @@ button.active-filter{background:#222!important;color:#fff!important;border-color
 .admin-subnav-head strong{display:block;font-size:18px}.admin-subnav-head span{display:block;color:#555;font-weight:800;font-size:12px;margin-top:3px}
 .admin-subnav-row{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:800px){.admin-hero-card,.admin-subnav-head{display:block}.admin-hero-badges{justify-content:flex-start;margin-top:10px}.admin-subnav-head button{margin-top:10px}.admin-menu-overview{grid-template-columns:1fr}}
+
+/* V0.8.7: Material + Stärke in Bestellungen wie Materialkarten zusammen anzeigen */
+.order-material-title{display:block;font-size:18px;font-weight:900;line-height:1.2;margin-bottom:4px;color:#111}
+.order-material-strength{margin:6px 0 2px;font-size:14px;color:#111;border-left:4px solid var(--red);padding-left:8px;background:#f7f7f7;display:inline-block;padding-top:4px;padding-bottom:4px;padding-right:8px}
+.order-material-strength strong{font-weight:900}

@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.8.5';
+const CLIENT_VERSION = '0.8.8';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -258,13 +258,47 @@ function parseFormatSize(value) {
   return match ? { lengthMm: Number(match[1]), widthMm: Number(match[2]) } : null;
 }
 
+function densitySearchText(material) {
+  return `${material?.name || ''} ${material?.category || ''} ${material?.type || ''} ${material?.articleNumber || ''} ${material?.note || ''}`
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss');
+}
+
+function densityInfoForMaterial(material) {
+  const text = densitySearchText(material);
+  const compact = text.replace(/[\s_.\-/]/g, '');
+  if (/\b(en\s*aw[-\s]*)?5754\b/.test(text) || compact.includes('almg3') || text.includes('al mg3')) {
+    return { factor: 2.68, label: 'AlMg3 / EN AW-5754' };
+  }
+  if (compact.includes('almg') || text.includes('alu') || text.includes('aluminium')) {
+    return { factor: 2.70, label: 'Aluminium allgemein' };
+  }
+  if (compact.includes('14301') || text.includes('1.4301') || text.includes('v2a') || compact.includes('x5crni1810') || compact.includes('304')) {
+    return { factor: 7.90, label: 'Edelstahl 1.4301 / V2A' };
+  }
+  if (compact.includes('14404') || text.includes('1.4404') || compact.includes('14571') || text.includes('1.4571') || text.includes('v4a') || compact.includes('316l')) {
+    return { factor: 8.00, label: 'Edelstahl V4A / 316L' };
+  }
+  if (text.includes('edelstahl') || text.includes('rostfrei') || text.includes('niro') || text.includes('inox') || /\bva\b/.test(text)) {
+    return { factor: 7.90, label: 'Edelstahl allgemein' };
+  }
+  if (text.includes('kupfer') || /\bcu\b/.test(text)) {
+    return { factor: 8.96, label: 'Kupfer' };
+  }
+  if (text.includes('messing') || /\bms\b/.test(text) || text.includes('brass')) {
+    return { factor: 8.50, label: 'Messing' };
+  }
+  if (compact.includes('dc01') || compact.includes('s235') || compact.includes('s355') || text.includes('stahl') || text.includes('verzinkt') || text.includes('steel')) {
+    return { factor: 7.85, label: 'Stahl' };
+  }
+  return { factor: 7.85, label: 'Stahl Standardwert' };
+}
+
 function densityFactorForMaterial(material) {
-  const text = `${material?.name || ''} ${material?.category || ''} ${material?.type || ''}`.toLowerCase();
-  if (text.includes('alu') || text.includes('aluminium')) return 2.7;
-  if (text.includes('edelstahl') || text.includes('v2a') || text.includes('v4a') || /va/.test(text)) return 8.0;
-  if (text.includes('kupfer')) return 8.96;
-  if (text.includes('messing')) return 8.5;
-  return 7.85;
+  return densityInfoForMaterial(material).factor;
 }
 
 function sheetWeightKg(material) {
@@ -285,7 +319,14 @@ function estimatedSheetsFromWeight(material, packageWeightKg, packages) {
 function weightInfoText(material) {
   const oneSheet = sheetWeightKg(material);
   if (!oneSheet) return 'Automatische Tafelberechnung nicht möglich, wenn Stärke oder Größe fehlen.';
-  return `ca. ${oneSheet.toFixed(1).replace('.', ',')} kg pro Tafel · Dichte wird aus dem Materialnamen geschätzt`;
+  const density = densityInfoForMaterial(material);
+  return `ca. ${oneSheet.toFixed(1).replace('.', ',')} kg pro Tafel · ${density.label}, ${String(density.factor).replace('.', ',')} kg/dm³`;
+}
+
+function sheetWeightShortText(material) {
+  const oneSheet = sheetWeightKg(material);
+  if (!oneSheet) return '-';
+  return `ca. ${oneSheet.toFixed(1).replace('.', ',')} kg/Tafel`;
 }
 
 function formatOptions(selected = '') {
@@ -391,6 +432,35 @@ function orderMaterial(order) {
 function orderFormatLabel(order) {
   const material = orderMaterial(order);
   return order.materialFormat || order.format || (material && material.format) || '';
+}
+
+function orderThicknessLabel(order) {
+  const material = orderMaterial(order);
+  return order.materialThickness || order.thickness || (material && material.thickness) || '';
+}
+
+function orderMaterialTitle(order) {
+  const name = String(order && order.materialName ? order.materialName : '').trim();
+  const thickness = normalizeThicknessInput(orderThicknessLabel(order) || '').trim();
+  if (!thickness) return name || 'Material';
+  const lowerName = name.toLowerCase().replace(/\s+/g, ' ');
+  const lowerThickness = thickness.toLowerCase();
+  if (lowerName.includes(lowerThickness)) return name || 'Material';
+  const numberOnly = lowerThickness.replace(/\s*mm$/i, '').trim();
+  if (numberOnly) {
+    const variants = Array.from(new Set([
+      numberOnly,
+      numberOnly.replace(',', '.'),
+      numberOnly.replace('.', ',')
+    ].filter(Boolean)));
+    if (variants.some(v => lowerName.includes(`${v} mm`) || lowerName.includes(`${v}mm`))) return name || 'Material';
+  }
+  return `${name || 'Material'} ${thickness}`;
+}
+
+function orderThicknessLine(order) {
+  const thickness = orderThicknessLabel(order);
+  return thickness ? `<div class="order-material-strength"><strong>Stärke: ${escapeHtml(thickness)}</strong></div>` : '';
 }
 
 function orderDimensionLine(order) {
@@ -939,6 +1009,7 @@ function materialCardHtml(m) {
       <div class="meta compact-material">
         <div><span>Menge</span><strong>${quantityLabel(m)}</strong></div>
         <div><span>Format</span><strong>${escapeHtml(m.format || '-')}</strong></div>
+        <div><span>Gewicht</span><strong>${escapeHtml(sheetWeightShortText(m))}</strong></div>
         <div><span>Lagerplatz</span><strong>${escapeHtml(materialLocationLabel(m))}</strong></div>
       </div>
       <div class="stock-fill"><span style="width:${fill}%"></span></div>
@@ -967,7 +1038,7 @@ function renderDeliveredMaterials() {
     <div class="card delivered-panel delivered-panel-small">
       <div class="panel-head"><h2>Geliefert</h2><span class="badge green">Wareneingang</span></div>
       <div class="quick-list delivered-list delivered-list-small">
-        ${delivered.map(m => `<div class="quick-item delivered-mini"><strong>${escapeHtml(materialTitle(m))}</strong><small>${quantityLabel(m)} · Maße: ${escapeHtml(m.format || '-')} · ${escapeHtml(materialLocationLabel(m))}</small><div class="row-actions">${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}<button class="ghost mini" onclick="openStockModal('${jsString(m.id)}','REMOVE')">Entnahme</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button></div></div>`).join('')}
+        ${delivered.map(m => `<div class="quick-item delivered-mini"><strong>${escapeHtml(materialTitle(m))}</strong><small>${quantityLabel(m)} · Maße: ${escapeHtml(m.format || '-')} · Gewicht: ${escapeHtml(sheetWeightShortText(m))} · ${escapeHtml(materialLocationLabel(m))}</small><div class="row-actions">${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}<button class="ghost mini" onclick="openStockModal('${jsString(m.id)}','REMOVE')">Entnahme</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button></div></div>`).join('')}
       </div>
       ${delivered.length >= 6 ? '<div class="footer-note">Weitere gelieferte Positionen sind unten in der Materialliste sichtbar.</div>' : ''}
     </div>`;
@@ -1587,7 +1658,7 @@ window.resetOrderFilters = () => {
 
 function orderSearchText(order) {
   return [
-    order.materialName, orderFormatLabel(order), order.note, order.requestedBy, order.requestedByRole,
+    order.materialName, orderThicknessLabel(order), orderFormatLabel(order), order.note, order.requestedBy, order.requestedByRole,
     order.deliveredToShelf, order.status, statusNames[order.status],
     order.createdAt ? fmtDate(order.createdAt) : '',
     order.lastUpdate ? fmtDate(order.lastUpdate) : '',
@@ -1673,7 +1744,7 @@ function renderOrdersTable(orders, withActions) {
         ${orders.map(o => `
           <tr>
             <td>${o.directIncoming ? '<span class="badge green">Wareneingang</span>' : statusBadge(o.status)}</td>
-            <td><strong>${escapeHtml(o.materialName)}</strong>${orderDimensionLine(o)}<div class="small muted">${o.directIncoming ? 'Erfasst von' : 'Angefragt von'} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}</td>
+            <td><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}<div class="small muted">${o.directIncoming ? 'Erfasst von' : 'Angefragt von'} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}</td>
             <td>${o.directIncoming ? `Wareneingang: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : `Anfrage: <strong>${orderQuantityLabel(o, 'request')}</strong>${o.orderedAmount ? `<br>Bestellt: <strong>${orderQuantityLabel(o, 'ordered')}</strong>` : ''}${(Number(o.receivedAmount)||Number(o.receivedSheets)) ? `<br>Geliefert: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : ''}`}</td>
             <td class="order-note">${escapeHtml(o.note || '-')}</td>
             <td>${orderFlow(o.status)}<div class="small muted">Letzte Änderung: ${fmtDate(o.lastUpdate)}</div>${o.status === 'ERLEDIGT' ? `<div class="small muted">Geliefert: ${fmtDate(o.receivedAt || o.lastUpdate)}</div>` : ''}</td>
@@ -2684,7 +2755,7 @@ window.openOrderedModal = (orderId) => {
   const o = state.orders.find(x => x.id === orderId);
   openModal(`
     <h2>Als bestellt markieren</h2>
-    <p><strong>${escapeHtml(o.materialName)}</strong><br><span class="muted">Anfrage vom Laser: ${orderQuantityLabel(o, 'request')}</span></p>
+    <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Anfrage vom Laser: ${orderQuantityLabel(o, 'request')}</span></p>
     <form id="orderedForm" class="form-grid">
       <div><label>Bestellte Pakete</label><input id="orderedAmount" type="number" min="1" step="1" value="${o.requestedAmount}"></div>${o.storage !== 'KONSI' ? `<div><label>Bestellte Tafeln</label><input id="orderedSheets" type="number" min="0" step="1" value="${Number(o.requestedSheets || 0)}"></div>` : ''}
       <div class="form-full"><label>Hinweis vom Büro</label><textarea id="orderedNote" placeholder="z. B. Liefertermin, Lieferant oder Rückfrage ...">${escapeHtml(o.note || '')}</textarea></div>
@@ -2710,7 +2781,7 @@ window.openReceiveModal = (orderId) => {
   const defaultWeight = Number(o.lastPackageWeightKg || material.lastPackageWeightKg || 0) || '';
   openModal(`
     <h2>${isK ? 'Konsi-Lieferung annehmen' : 'Lieferung annehmen'}</h2>
-    <p><strong>${escapeHtml(o.materialName)}</strong><br><span class="muted">Bestellt: ${orderQuantityLabel(o, 'ordered')} · Bereits geliefert: ${orderQuantityLabel(o, 'received')}</span></p>
+    <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Bestellt: ${orderQuantityLabel(o, 'ordered')} · Bereits geliefert: ${orderQuantityLabel(o, 'received')}</span></p>
     <form id="receiveForm" class="form-grid">
       <div><label>Gelieferte Pakete</label><input id="receivedAmount" type="number" min="0" step="1" value="${openP}"><div class="format-hint">Nur bei Lieferung: Pakete werden über Gewicht in Tafeln umgerechnet.</div></div>
       ${isK ? '' : `<div><label>Gewicht pro Paket kg</label><input id="packageWeightKg" type="number" min="0" step="0.1" value="${defaultWeight}" placeholder="z. B. 850"><div class="format-hint">Beispiel: 2 Pakete à 850 kg = 1700 kg.</div></div>

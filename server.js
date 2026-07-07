@@ -131,7 +131,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.8.5';
+const PROGRAM_VERSION = '0.8.8';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -262,13 +262,47 @@ function parseFormatSize(value) {
   return { lengthMm: Number(match[1]), widthMm: Number(match[2]) };
 }
 
+function densitySearchText(material) {
+  return `${cleanText(material && material.name)} ${cleanText(material && material.category)} ${cleanText(material && material.type)} ${cleanText(material && material.articleNumber)} ${cleanText(material && material.note)}`
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss');
+}
+
+function densityInfoForMaterial(material) {
+  const text = densitySearchText(material);
+  const compact = text.replace(/[\s_.\-/]/g, '');
+  if (/\b(en\s*aw[-\s]*)?5754\b/.test(text) || compact.includes('almg3') || text.includes('al mg3')) {
+    return { factor: 2.68, label: 'AlMg3 / EN AW-5754' };
+  }
+  if (compact.includes('almg') || text.includes('alu') || text.includes('aluminium')) {
+    return { factor: 2.70, label: 'Aluminium allgemein' };
+  }
+  if (compact.includes('14301') || text.includes('1.4301') || text.includes('v2a') || compact.includes('x5crni1810') || compact.includes('304')) {
+    return { factor: 7.90, label: 'Edelstahl 1.4301 / V2A' };
+  }
+  if (compact.includes('14404') || text.includes('1.4404') || compact.includes('14571') || text.includes('1.4571') || text.includes('v4a') || compact.includes('316l')) {
+    return { factor: 8.00, label: 'Edelstahl V4A / 316L' };
+  }
+  if (text.includes('edelstahl') || text.includes('rostfrei') || text.includes('niro') || text.includes('inox') || /\bva\b/.test(text)) {
+    return { factor: 7.90, label: 'Edelstahl allgemein' };
+  }
+  if (text.includes('kupfer') || /\bcu\b/.test(text)) {
+    return { factor: 8.96, label: 'Kupfer' };
+  }
+  if (text.includes('messing') || /\bms\b/.test(text) || text.includes('brass')) {
+    return { factor: 8.50, label: 'Messing' };
+  }
+  if (compact.includes('dc01') || compact.includes('s235') || compact.includes('s355') || text.includes('stahl') || text.includes('verzinkt') || text.includes('steel')) {
+    return { factor: 7.85, label: 'Stahl' };
+  }
+  return { factor: 7.85, label: 'Stahl Standardwert' };
+}
+
 function densityFactorForMaterial(material) {
-  const text = `${cleanText(material && material.name)} ${cleanText(material && material.category)} ${cleanText(material && material.type)}`.toLowerCase();
-  if (text.includes('alu') || text.includes('aluminium')) return 2.7;
-  if (text.includes('edelstahl') || text.includes('v2a') || text.includes('v4a') || /\bva\b/.test(text)) return 8.0;
-  if (text.includes('kupfer')) return 8.96;
-  if (text.includes('messing')) return 8.5;
-  return 7.85;
+  return densityInfoForMaterial(material).factor;
 }
 
 function sheetWeightKg(material) {
