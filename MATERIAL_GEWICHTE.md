@@ -1,4 +1,4 @@
-# Materialgewichte 0.8.8
+# Materialgewichte 0.8.10
 
 Die Software berechnet das Gewicht je Tafel automatisch aus:
 

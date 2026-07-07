@@ -1,6 +1,6 @@
-# Teständerungen 0.8.8
+# Teständerungen 0.8.10
 
-Basis: letzte funktionierende 0.7.2-Testversion im Master-Design, jetzt als Version 0.8.8 geführt.
+Basis: letzte funktionierende 0.7.2-Testversion im Master-Design, jetzt als Version 0.8.10 geführt.
 
 Geändert:
 
@@ -24,7 +24,7 @@ Lokal testen:
 Erst nach erfolgreichem Test in GitHub Desktop committen/pushen und Render neu deployen.
 
 
-## Ergänzung 0.8.8
+## Ergänzung 0.8.10
 
 - Konsi-Lager → Tabelle einfügen nutzt jetzt das gewünschte Format:
 
@@ -37,26 +37,26 @@ Material ID	Material	Format	Stärke
 - Der Import bleibt nur für Admin sichtbar/freigegeben.
 
 
-## Änderung 0.8.8
+## Änderung 0.8.10
 
 - Fester Mindestbestand nur für normale Tafeln: 2 Tafeln.
 - Pakete, Konsi und Resttafeln bleiben ausgenommen und lösen keine Mindestbestand-Warnung aus.
 - Neue, importierte und bestehende Materialien werden serverseitig so normalisiert, dass nur Tafelbestand für die Warnung zählt.
 
 
-## Version 0.8.8
+## Version 0.8.10
 
-Diese Version bündelt die bisherigen Teständerungen als neuer Stand 0.8.8.
+Diese Version bündelt die bisherigen Teständerungen als neuer Stand 0.8.10.
 
 
-## Änderung 0.8.8
+## Änderung 0.8.10
 
 - Manuelle Wareneingänge können erst gebucht werden, wenn die Stärke eingetragen ist.
 - Admin kann Wareneingänge ohne Bestellung nachträglich korrigieren.
 - Die Suche findet Material auch zusammenhängend/kompakt, z. B. `AlmG3` findet auch `Alm G3 foliert`.
 
 
-## Änderung 0.8.8
+## Änderung 0.8.10
 
 - Admin-Untermenüs werden nicht mehr einzeln in der linken Hauptnavigation angezeigt.
 - Der Admin-Bereich ist in Gruppen sortiert: Benutzer & Rechte, Material & Listen, Sicherung & Kontrolle, tägliche Kontrolle.
@@ -64,7 +64,7 @@ Diese Version bündelt die bisherigen Teständerungen als neuer Stand 0.8.8.
 - Master-Design, Farben und Grundlayout bleiben erhalten.
 
 
-## Änderung 0.8.8
+## Änderung 0.8.10
 
 - In der Bestellübersicht wird die Stärke direkt unter dem Material deutlich angezeigt.
 - Die Stärke wird auch in der Bestellungssuche berücksichtigt.

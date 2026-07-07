@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.8.8",
-  "description": "Eckl Eco Technics Materialverwaltung V0.8.8 - Gewichtsangaben pro Material",
+  "version": "0.8.10",
+  "description": "Eckl Eco Technics Materialverwaltung V0.8.10 - Tafeln ohne ca und Verräumen mit Maximalwert",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

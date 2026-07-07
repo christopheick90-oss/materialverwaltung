@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.8.8';
+const CLIENT_VERSION = '0.8.10';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -412,7 +412,21 @@ function quantityLabel(material) {
   const packages = Number(material.packageStock) || 0;
   const deliveredPackages = Number(material?.deliveredPackageCount) || (material?.deliveryPending ? packages : 0);
   const sheets = Number(material.sheetStock ?? material.stock) || 0;
-  if (material?.deliveryPending && deliveredPackages > 0 && sheets > 0) return `${deliveredPackages} Pakete = ca. ${sheets} Tafeln`;
+  if (material?.deliveryPending && deliveredPackages > 0 && sheets > 0) return `${deliveredPackages} Pakete = ${sheets} Tafeln`;
+  if (packages > 0) return `${packages} Pakete${sheets ? ` + ${sheets} Tafeln` : ''}`;
+  return `${sheets} ${escapeHtml(material.unit || 'Tafeln')}`;
+}
+
+
+function materialCardQuantityLabel(material) {
+  if (isKonsi(material)) {
+    const packages = Number(material.stock) || 0;
+    return `${packages} Pakete`;
+  }
+  const packages = Number(material.packageStock) || 0;
+  const sheets = Number(material.sheetStock ?? material.stock) || 0;
+  if (material?.deliveryPending && packages > 0 && sheets > 0) return `${packages} Pakete = ${sheets} Tafeln`;
+  if (material?.deliveryPending && packages > 0) return `${packages} Pakete`;
   if (packages > 0) return `${packages} Pakete${sheets ? ` + ${sheets} Tafeln` : ''}`;
   return `${sheets} ${escapeHtml(material.unit || 'Tafeln')}`;
 }
@@ -421,7 +435,7 @@ function orderQuantityLabel(order, type = 'request') {
   const amount = type === 'ordered' ? order.orderedAmount : (type === 'received' ? order.receivedAmount : order.requestedAmount);
   const sheets = type === 'ordered' ? order.orderedSheets : (type === 'received' ? order.receivedSheets : order.requestedSheets);
   if (order.storage === 'KONSI') return `${amount || 0} Pakete`;
-  if (type === 'received' && Number(amount) > 0 && Number(sheets) > 0) return `${amount || 0} Pakete = ca. ${Number(sheets)} Tafeln`;
+  if (type === 'received' && Number(amount) > 0 && Number(sheets) > 0) return `${amount || 0} Pakete = ${Number(sheets)} Tafeln`;
   return `${amount || 0} Pakete${Number(sheets) ? ` + ${Number(sheets)} Tafeln` : ''}`;
 }
 
@@ -1007,9 +1021,8 @@ function materialCardHtml(m) {
     <div class="material-card ${m.deliveryPending ? 'delivered' : (m.rest ? 'rest' : (m.storage === 'KONSI' ? 'konsi' : (status.key === 'low' || status.key === 'empty' ? 'low' : '')))}">
       <div class="material-head"><h3>${escapeHtml(materialTitle(m))}</h3>${materialStatusBadge(m)}</div>
       <div class="meta compact-material">
-        <div><span>Menge</span><strong>${quantityLabel(m)}</strong></div>
+        <div><span>Menge</span><strong>${materialCardQuantityLabel(m)}</strong></div>
         <div><span>Format</span><strong>${escapeHtml(m.format || '-')}</strong></div>
-        <div><span>Gewicht</span><strong>${escapeHtml(sheetWeightShortText(m))}</strong></div>
         <div><span>Lagerplatz</span><strong>${escapeHtml(materialLocationLabel(m))}</strong></div>
       </div>
       <div class="stock-fill"><span style="width:${fill}%"></span></div>
@@ -1038,7 +1051,7 @@ function renderDeliveredMaterials() {
     <div class="card delivered-panel delivered-panel-small">
       <div class="panel-head"><h2>Geliefert</h2><span class="badge green">Wareneingang</span></div>
       <div class="quick-list delivered-list delivered-list-small">
-        ${delivered.map(m => `<div class="quick-item delivered-mini"><strong>${escapeHtml(materialTitle(m))}</strong><small>${quantityLabel(m)} · Maße: ${escapeHtml(m.format || '-')} · Gewicht: ${escapeHtml(sheetWeightShortText(m))} · ${escapeHtml(materialLocationLabel(m))}</small><div class="row-actions">${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}<button class="ghost mini" onclick="openStockModal('${jsString(m.id)}','REMOVE')">Entnahme</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button></div></div>`).join('')}
+        ${delivered.map(m => `<div class="quick-item delivered-mini"><strong>${escapeHtml(materialTitle(m))}</strong><small>${materialCardQuantityLabel(m)} · Maße: ${escapeHtml(m.format || '-')} · ${escapeHtml(materialLocationLabel(m))}</small><div class="row-actions">${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}<button class="ghost mini" onclick="openStockModal('${jsString(m.id)}','REMOVE')">Entnahme</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button></div></div>`).join('')}
       </div>
       ${delivered.length >= 6 ? '<div class="footer-note">Weitere gelieferte Positionen sind unten in der Materialliste sichtbar.</div>' : ''}
     </div>`;
@@ -2603,7 +2616,7 @@ window.openMoveMaterialModal = (materialId) => {
     <h2>Tafeln verräumen</h2>
     <p><strong>${escapeHtml(materialTitle(m))}</strong><br><span class="muted">Von ${escapeHtml(m.shelf || '-')} · verfügbar: ${available} Tafeln</span></p>
     <form id="moveMaterialForm" class="form-grid">
-      <div><label>Tafeln verschieben</label><input id="moveQty" type="number" min="1" max="${available}" step="1" value="1" required></div>
+      <div><label>Tafeln verschieben</label><input id="moveQty" type="number" min="1" max="${available}" step="1" value="${available}" required></div>
       <div><label>Ziel-Regal</label><select id="moveTargetShelf" required>${targetOptions}</select></div>
       <div class="form-full"><label>Notiz</label><textarea id="moveNote" placeholder="optional, z. B. verräumt nach Zuschnitt ..."></textarea></div>
       <div class="notice form-full">Die Tafeln werden bei ${escapeHtml(m.shelf || 'Carport/Bodenhaltung')} automatisch abgezogen. Wenn dort nichts mehr übrig ist, verschwindet die Position.</div>
