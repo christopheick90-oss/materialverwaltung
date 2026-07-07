@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.8.10';
+const CLIENT_VERSION = '0.8.11';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -424,9 +424,11 @@ function materialCardQuantityLabel(material) {
     return `${packages} Pakete`;
   }
   const packages = Number(material.packageStock) || 0;
+  const deliveredPackages = Number(material?.deliveredPackageCount) || (material?.deliveryPending ? packages : 0);
   const sheets = Number(material.sheetStock ?? material.stock) || 0;
-  if (material?.deliveryPending && packages > 0 && sheets > 0) return `${packages} Pakete = ${sheets} Tafeln`;
-  if (material?.deliveryPending && packages > 0) return `${packages} Pakete`;
+  // Bei Wareneingang die Paketanzahl sichtbar lassen, auch wenn intern nur Tafeln verräumt werden.
+  if (material?.deliveryPending && deliveredPackages > 0 && sheets > 0) return `${deliveredPackages} Pakete = ${sheets} Tafeln`;
+  if (material?.deliveryPending && deliveredPackages > 0) return `${deliveredPackages} Pakete`;
   if (packages > 0) return `${packages} Pakete${sheets ? ` + ${sheets} Tafeln` : ''}`;
   return `${sheets} ${escapeHtml(material.unit || 'Tafeln')}`;
 }
@@ -2612,9 +2614,12 @@ window.openMoveMaterialModal = (materialId) => {
     .filter(shelf => /^Regal\s[1-6]$/.test(shelf))
     .map(shelf => `<option value="${escapeHtml(shelf)}">${escapeHtml(shelf)}</option>`)
     .join('');
+  const packageInfo = m.deliveryPending && Number(m.deliveredPackageCount) > 0
+    ? ` · Wareneingang: ${Number(m.deliveredPackageCount)} Pakete = ${available} Tafeln`
+    : '';
   openModal(`
     <h2>Tafeln verräumen</h2>
-    <p><strong>${escapeHtml(materialTitle(m))}</strong><br><span class="muted">Von ${escapeHtml(m.shelf || '-')} · verfügbar: ${available} Tafeln</span></p>
+    <p><strong>${escapeHtml(materialTitle(m))}</strong><br><span class="muted">Von ${escapeHtml(m.shelf || '-')} · verfügbar: ${available} Tafeln${packageInfo}</span></p>
     <form id="moveMaterialForm" class="form-grid">
       <div><label>Tafeln verschieben</label><input id="moveQty" type="number" min="1" max="${available}" step="1" value="${available}" required></div>
       <div><label>Ziel-Regal</label><select id="moveTargetShelf" required>${targetOptions}</select></div>

@@ -131,7 +131,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.8.10';
+const PROGRAM_VERSION = '0.8.11';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -235,7 +235,7 @@ function quantityText(material) {
   const packages = Number(material.packageStock) || 0;
   const deliveredPackages = Number(material && material.deliveredPackageCount) || (material && material.deliveryPending ? packages : 0);
   const sheets = Number(material.sheetStock ?? material.stock) || 0;
-  if (material && material.deliveryPending && deliveredPackages > 0 && sheets > 0) return `${deliveredPackages} Pakete = ca. ${sheets} Tafeln`;
+  if (material && material.deliveryPending && deliveredPackages > 0 && sheets > 0) return `${deliveredPackages} Pakete = ${sheets} Tafeln`;
   if (packages > 0) return `${packages} Pakete${sheets ? ` + ${sheets} Tafeln` : ''}`;
   return `${sheets} ${material.unit || 'Tafeln'}`;
 }
@@ -244,7 +244,7 @@ function orderQuantityText(order, type = 'request') {
   const amount = type === 'ordered' ? order.orderedAmount : (type === 'received' ? order.receivedAmount : order.requestedAmount);
   const sheets = type === 'ordered' ? order.orderedSheets : (type === 'received' ? order.receivedSheets : order.requestedSheets);
   if (order.storage === 'KONSI') return `${amount || 0} Pakete`;
-  if (type === 'received' && Number(amount) > 0 && Number(sheets) > 0) return `${amount || 0} Pakete = ca. ${Number(sheets)} Tafeln`;
+  if (type === 'received' && Number(amount) > 0 && Number(sheets) > 0) return `${amount || 0} Pakete = ${Number(sheets)} Tafeln`;
   return `${amount || 0} Pakete${Number(sheets) ? ` + ${Number(sheets)} Tafeln` : ''}`;
 }
 
