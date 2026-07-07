@@ -219,3 +219,12 @@ button.active-filter{background:#222!important;color:#fff!important;border-color
 .paste-preview{max-height:300px;overflow:auto;border:1px solid #e5e5e5;border-radius:14px;margin:12px 0;background:#fff}
 .paste-preview table{border:0;border-radius:0;margin:0;min-width:760px}
 .modal-toolbar-sticky{position:sticky;bottom:0;background:#fff;border-top:1px solid #eee;padding:10px 0 0;margin:8px 0 0;z-index:2}
+
+/* V0.7.2-test.2: Geliefert direkt bei Material, kompakter */
+.delivered-panel-small{padding:12px 14px;margin-bottom:12px}
+.delivered-panel-small .panel-head{margin-bottom:8px}
+.delivered-panel-small .panel-head h2{font-size:19px}
+.delivered-list-small{gap:8px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.delivered-list-small .quick-item{padding:9px 10px;font-size:13px}
+.delivered-list-small .quick-item strong{font-size:14px}
+.delivered-list-small .quick-item small{font-size:11px}

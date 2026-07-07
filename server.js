@@ -102,8 +102,10 @@ function isDeleteConfirmTextValid(value) {
 
 
 function normalizePackageNumbers(value) {
+  // Konsi-Paketnummern dürfen bewusst doppelt vorkommen.
+  // Deshalb hier KEIN Set verwenden: jede Zeile zählt als eigenes Paket.
   const list = Array.isArray(value) ? value : String(value || '').split(/[\n,;]+/);
-  return Array.from(new Set(list.map(v => cleanText(v)).filter(Boolean)));
+  return list.map(v => cleanText(v)).filter(Boolean);
 }
 
 function normalizeStrengthList(value) {
@@ -129,7 +131,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.7.2';
+const PROGRAM_VERSION = '0.7.2-test.2';
 const KONSI_LOCATION = 'Garage';
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
 const DEFAULT_STANDARD_STRENGTHS = ['1 mm','1,5 mm','2 mm','3 mm','4 mm','5 mm','6 mm','8 mm','10 mm'];
@@ -948,9 +950,10 @@ function findDuplicateMaterial(material, excludeId = null) {
 
 function mergeMaterialQuantities(target, incoming) {
   if (target.storage === 'KONSI' || incoming.storage === 'KONSI') {
-    const mergedNumbers = Array.from(new Set([...normalizePackageNumbers(target.packageNumbers), ...normalizePackageNumbers(incoming.packageNumbers)]));
+    const existingNumbers = normalizePackageNumbers(target.packageNumbers);
+    const incomingNumbers = normalizePackageNumbers(incoming.packageNumbers);
     const addPackages = Math.max(0, numberOr(incoming.stock, 0));
-    target.packageNumbers = mergedNumbers.length ? mergedNumbers : normalizePackageNumbers(target.packageNumbers);
+    target.packageNumbers = incomingNumbers.length ? existingNumbers.concat(incomingNumbers) : existingNumbers;
     target.stock = target.packageNumbers.length || (Math.max(0, numberOr(target.stock, 0)) + addPackages);
     target.packageStock = 0;
     target.sheetStock = 0;
@@ -1825,8 +1828,10 @@ app.post('/api/materials/:id/stock', requireAuth, allowRoles('LASER', 'BUERO', '
   if (isKonsi && action === 'REMOVE') {
     material.packageNumbers = normalizePackageNumbers(material.packageNumbers);
     if (!packageNumber) return res.status(400).json({ error: 'Bitte eine Konsi-Paketnummer auswählen.' });
-    if (!material.packageNumbers.includes(packageNumber)) return res.status(400).json({ error: 'Diese Paketnummer ist beim Material nicht hinterlegt oder wurde bereits entnommen.' });
-    material.packageNumbers = material.packageNumbers.filter(n => n !== packageNumber);
+    const packageIndex = material.packageNumbers.indexOf(packageNumber);
+    if (packageIndex < 0) return res.status(400).json({ error: 'Diese Paketnummer ist beim Material nicht hinterlegt oder wurde bereits entnommen.' });
+    // Bei doppelt vorhandenen Paketnummern nur genau ein Paket entfernen.
+    material.packageNumbers.splice(packageIndex, 1);
     material.stock = material.packageNumbers.length;
     material.sheetStock = 0;
   } else if (action === 'REMOVE') {
@@ -2358,9 +2363,8 @@ app.post('/api/orders/:id/receive', requireAuth, allowRoles('LASER', 'BUERO', 'C
   if (order.storage === 'KONSI') {
     if (packageNumbers.length !== packages) return res.status(400).json({ error: 'Beim Konsi-Lager muss für jedes gelieferte Paket genau eine Paketnummer eingetragen werden.' });
     const existingNumbers = normalizePackageNumbers(material.packageNumbers);
-    const duplicateNumber = packageNumbers.find(n => existingNumbers.includes(n));
-    if (duplicateNumber) return res.status(400).json({ error: `Paketnummer ist bereits vorhanden: ${duplicateNumber}` });
-    material.packageNumbers = Array.from(new Set([...existingNumbers, ...packageNumbers]));
+    // Gleiche Paketnummern sind erlaubt: jedes Vorkommen zählt als separates Konsi-Paket.
+    material.packageNumbers = existingNumbers.concat(packageNumbers);
     material.stock = material.packageNumbers.length;
     material.packageStock = 0;
     material.sheetStock = 0;
@@ -2397,6 +2401,89 @@ app.post('/api/orders/:id/receive', requireAuth, allowRoles('LASER', 'BUERO', 'C
   emitToAll('material:changed', { activity, message: `Bestand durch Lieferung aktualisiert: ${order.materialName}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('state:changed', { reason: 'order:received' });
   res.json({ order });
+});
+
+app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const materialId = cleanText(req.body.materialId, '');
+  const targetShelf = normalizeShelf(req.body.targetShelf || 'Carport');
+  const packages = Math.max(0, Math.floor(numberOr(req.body.receivedAmount, 0)));
+  const packageWeightKg = Math.max(0, numberOr(req.body.packageWeightKg, 0));
+  let sourceMaterial = materialId ? db.materials.find(m => m.id === materialId && !m.archived) : null;
+
+  if (sourceMaterial && sourceMaterial.storage === 'KONSI') {
+    return res.status(400).json({ error: 'Wareneingang ohne Bestellung ist hier nur für Hauptlager-Material vorgesehen. Konsi bitte über Konsi-Material/Paketnummern führen.' });
+  }
+
+  if (!sourceMaterial) {
+    const name = cleanText(req.body.name, '');
+    if (!name) return res.status(400).json({ error: 'Bitte Material auswählen oder Materialname eintragen.' });
+    sourceMaterial = normalizeMaterial({
+      name,
+      thickness: req.body.thickness,
+      format: req.body.format,
+      storage: 'HAUPTLAGER',
+      shelf: targetShelf,
+      stock: 0,
+      sheetStock: 0,
+      packageStock: 0,
+      minStock: 0,
+      rest: false,
+      note: cleanText(req.body.note, '')
+    });
+  }
+
+  const autoSheets = estimateSheetsFromPackageWeight(sourceMaterial, packageWeightKg, packages);
+  const sheets = Math.max(0, Math.floor(numberOr(req.body.receivedSheets, autoSheets)));
+  const note = cleanText(req.body.note, '');
+  if (packages <= 0 && sheets <= 0) return res.status(400).json({ error: 'Bitte gelieferte Pakete oder Tafeln eintragen.' });
+
+  const existingTarget = db.materials.find(m => !m.archived && m.storage !== 'KONSI' && deliveryTargetKey(m, m.shelf) === deliveryTargetKey(sourceMaterial, targetShelf));
+  let beforeTargetSnapshot = existingTarget ? materialSnapshotById(existingTarget.id) : null;
+  const receivedAt = nowIso();
+  const changedTarget = findOrCreateDeliveryTarget(sourceMaterial, targetShelf, packages, sheets, { deliveredAt: receivedAt, deliveredBy: req.user.name, deliveredFromOrderId: '', packageWeightKg });
+  if (!beforeTargetSnapshot) beforeTargetSnapshot = { id: changedTarget.id, existed: false, material: null };
+  if (note) changedTarget.note = [changedTarget.note, note].filter(Boolean).join(' | ');
+  changedTarget.updatedAt = receivedAt;
+
+  const directIncoming = {
+    id: uid('o'),
+    materialId: changedTarget.id,
+    materialName: changedTarget.name,
+    storage: 'HAUPTLAGER',
+    requestedAmount: packages,
+    requestedSheets: sheets,
+    orderedAmount: packages,
+    orderedSheets: sheets,
+    status: 'ERLEDIGT',
+    note,
+    requestedBy: req.user.name,
+    requestedByRole: req.user.role,
+    createdAt: receivedAt,
+    approvedBy: null,
+    approvedAt: null,
+    orderedBy: req.user.name,
+    orderedAt: receivedAt,
+    receivedAmount: packages,
+    receivedSheets: sheets,
+    receivedBy: req.user.name,
+    receivedAt,
+    deliveredToShelf: targetShelf,
+    deliveries: [{ id: uid('d'), packages, sheets, targetShelf, packageNumbers: [], packageWeightKg, totalWeightKg: packageWeightKg ? packageWeightKg * packages : 0, autoSheets, note, by: req.user.name, at: receivedAt, directIncoming: true }],
+    directIncoming: true,
+    doneBy: req.user.name,
+    doneAt: receivedAt,
+    lastPackageWeightKg: packageWeightKg || null,
+    lastUpdate: receivedAt
+  };
+  db.orders.unshift(directIncoming);
+
+  const weightText = packageWeightKg ? ` (${packages} Paket(e) × ${packageWeightKg} kg = ${packageWeightKg * packages} kg, ca. ${autoSheets} Tafeln berechnet)` : '';
+  const activity = addActivity('WARENEINGANG', `${req.user.name} hat Wareneingang ohne Bestellung für ${materialTitleText(changedTarget)} gebucht: ${orderQuantityText({ ...directIncoming, receivedAmount: packages, receivedSheets: sheets }, 'received')} nach ${targetShelf}${weightText}.`, req.user, { materialId: changedTarget.id, materialIds: [changedTarget.id], orderId: directIncoming.id, undo: makeUndo('WARENEINGANG', [beforeTargetSnapshot], 'Wareneingang ohne Bestellung rückgängig') });
+  saveDb();
+  emitToAll('order:updated', { order: directIncoming, activity, message: `Wareneingang ohne Bestellung: ${changedTarget.name} → ${targetShelf}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('material:changed', { material: changedTarget, activity, message: `Wareneingang gebucht: ${changedTarget.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('state:changed', { reason: 'order:direct-receive' });
+  res.status(201).json({ order: directIncoming, material: changedTarget });
 });
 
 app.post('/api/change-password', requireAuth, (req, res) => {
