@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.8.3';
+const CLIENT_VERSION = '0.8.4';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -141,17 +141,39 @@ function normalizeSearchText(value) {
     .replace(/ß/g, 'ss');
 }
 
-function searchTextVariants(value) {
+const searchAliasGroups = [
+  ['almg3', 'alm g3', 'alu', 'aluminium', 'aluminum'],
+  ['1.4301', '14301', 'v2a', 'edelstahl', 'niro', 'inox', 'rostfrei']
+];
+
+function baseSearchVariants(value) {
   const plain = normalizeSearchText(value);
   const compact = plain.replace(/[^a-z0-9]+/g, '');
-  return `${plain} ${compact}`;
+  return [plain, compact].filter(Boolean);
+}
+
+function searchVariants(value) {
+  const variants = new Set(baseSearchVariants(value));
+  const current = Array.from(variants);
+  searchAliasGroups.forEach(group => {
+    const normalizedGroup = group.flatMap(item => baseSearchVariants(item));
+    const hasMatch = normalizedGroup.some(alias => current.some(v => v.includes(alias)));
+    if (hasMatch) normalizedGroup.forEach(alias => variants.add(alias));
+  });
+  return Array.from(variants).filter(Boolean);
+}
+
+function searchTextVariants(value) {
+  return searchVariants(value).join(' ');
 }
 
 function searchMatches(haystack, query) {
   const raw = String(query || '').trim();
   if (!raw) return true;
   const hay = searchTextVariants(haystack);
-  return raw.split(/\s+/).filter(Boolean).every(part => hay.includes(searchTextVariants(part).trim()));
+  return raw.split(/\s+/).filter(Boolean).every(part =>
+    searchVariants(part).some(needle => hay.includes(needle))
+  );
 }
 
 function materialSearchText(material) {

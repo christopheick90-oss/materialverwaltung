@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.8.3",
-  "description": "Eckl Eco Technics Materialverwaltung V0.8.3 - Admin-Übersicht gruppiert und Navigation bereinigt",
+  "version": "0.8.4",
+  "description": "Eckl Eco Technics Materialverwaltung V0.8.4 - Suche mit Material-Synonymen Alu/AlMg3 und V2A/1.4301",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",
