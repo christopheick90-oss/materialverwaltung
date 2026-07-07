@@ -1,4 +1,4 @@
-# Render Deploy Anleitung V0.7.1
+# Render Deploy Anleitung V0.7.2
 
 1. ZIP entpacken.
 2. Inhalt des Ordners in GitHub hochladen, nicht die ZIP selbst.

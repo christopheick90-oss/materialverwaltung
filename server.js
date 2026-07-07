@@ -22,6 +22,7 @@ const root = __dirname;
 const dataDir = process.env.ECKL_DATA_DIR || (process.env.RENDER ? '/tmp/eckl-data' : path.join(root, 'data'));
 const dbFile = path.join(dataDir, 'db.json');
 const publicDir = path.join(root, 'public');
+const indexFile = path.join(publicDir, 'index.html');
 
 fs.mkdirSync(dataDir, { recursive: true });
 
@@ -128,7 +129,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.7.1';
+const PROGRAM_VERSION = '0.7.2';
 const KONSI_LOCATION = 'Garage';
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
 const DEFAULT_STANDARD_STRENGTHS = ['1 mm','1,5 mm','2 mm','3 mm','4 mm','5 mm','6 mm','8 mm','10 mm'];
@@ -1426,8 +1427,26 @@ app.use((req, res, next) => {
 app.get('/api/version', (_req, res) => res.json({ appName: APP_NAME, version: PROGRAM_VERSION, serverMode: SERVER_MODE, port: PORT, localUrl: `http://localhost:${PORT}`, externalUrl: cleanText(process.env.RENDER_EXTERNAL_URL || ''), storage: pgPool ? 'postgres' : 'file', networkUrls: networkUrls() }));
 app.get('/api/server-info', (_req, res) => res.json({ ok: true, appName: APP_NAME, version: PROGRAM_VERSION, serverMode: SERVER_MODE, port: PORT, localUrl: `http://localhost:${PORT}`, externalUrl: cleanText(process.env.RENDER_EXTERNAL_URL || ''), storage: pgPool ? 'postgres' : 'file', networkIps: networkAddresses(), networkUrls: networkUrls(), serverTime: nowIso() }));
 
+function renderDiagnosticHtml() {
+  const files = fs.existsSync(publicDir) ? fs.readdirSync(publicDir).sort().join(', ') : 'public-Ordner fehlt';
+  return `<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eckl Materialverwaltung · Render Diagnose</title>
+<style>body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f4f4f4;color:#111}.box{max-width:900px;margin:40px auto;background:#fff;border-left:6px solid #e4002b;padding:24px;box-shadow:0 8px 20px rgba(0,0,0,.12)}code{background:#eee;padding:2px 6px}.head{background:linear-gradient(180deg,#2f2f2f,#151515);color:#fff;border-bottom:4px solid #e4002b;padding:18px;margin:-24px -24px 20px}</style>
+</head><body><div class="box"><div class="head"><h1>Eckl Materialverwaltung</h1></div>
+<h2>Render-Dateien nicht vollständig gefunden</h2>
+<p>Der Server läuft, aber <code>public/index.html</code> wurde im Render-Repository nicht gefunden.</p>
+<p><strong>Version:</strong> ${PROGRAM_VERSION}</p>
+<p><strong>Gesuchter Ordner:</strong> <code>${publicDir}</code></p>
+<p><strong>Gefundene Dateien:</strong> ${files}</p>
+<p>Bitte in GitHub prüfen: Im Repository müssen direkt <code>package.json</code>, <code>server.js</code> und der Ordner <code>public</code> sichtbar sein. Nicht nur die ZIP und nicht ein zusätzlicher Unterordner.</p>
+<p>Teste außerdem <code>/debug/render</code>.</p>
+</div></body></html>`;
+}
+
 function sendFrontend(_req, res) {
-  res.sendFile(path.join(publicDir, 'index.html'));
+  if (fs.existsSync(indexFile)) return res.sendFile(indexFile);
+  res.status(200).send(renderDiagnosticHtml());
 }
 
 app.get('/', sendFrontend);
@@ -1438,7 +1457,27 @@ app.get('/material', sendFrontend);
 
 app.get('/debug/public', (_req, res) => {
   const files = fs.existsSync(publicDir) ? fs.readdirSync(publicDir).sort() : [];
-  res.json({ ok: true, version: PROGRAM_VERSION, publicDir, files });
+  res.json({ ok: true, version: PROGRAM_VERSION, root, publicDir, indexFile, indexExists: fs.existsSync(indexFile), files });
+});
+
+app.get('/debug/render', (_req, res) => {
+  const rootFiles = fs.readdirSync(root).sort();
+  const publicFiles = fs.existsSync(publicDir) ? fs.readdirSync(publicDir).sort() : [];
+  res.json({
+    ok: true,
+    version: PROGRAM_VERSION,
+    node: process.version,
+    cwd: process.cwd(),
+    root,
+    rootFiles,
+    publicDir,
+    publicExists: fs.existsSync(publicDir),
+    indexFile,
+    indexExists: fs.existsSync(indexFile),
+    publicFiles,
+    render: Boolean(process.env.RENDER),
+    storage: pgPool ? 'postgres' : 'file'
+  });
 });
 
 app.use(express.static(publicDir));
@@ -2587,7 +2626,7 @@ io.on('connection', (socket) => {
 
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, version: PROGRAM_VERSION, storage: pgPool ? 'postgres' : 'file', mode: SERVER_MODE, at: nowIso() });
+  res.json({ ok: true, version: PROGRAM_VERSION, storage: pgPool ? 'postgres' : 'file', mode: SERVER_MODE, publicExists: fs.existsSync(publicDir), indexExists: fs.existsSync(indexFile), at: nowIso() });
 });
 
 app.get('/api/system/storage', requireAuth, allowRoles('ADMIN'), (req, res) => {
@@ -2595,7 +2634,7 @@ app.get('/api/system/storage', requireAuth, allowRoles('ADMIN'), (req, res) => {
 });
 
 app.get('*', (req, res) => {
-  res.sendFile(path.join(publicDir, 'index.html'));
+  sendFrontend(req, res);
 });
 
 async function startServer() {
