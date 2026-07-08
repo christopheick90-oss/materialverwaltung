@@ -1,4 +1,4 @@
-V0.9.7 Schreibweise-Normierung
+V0.9.8 Werkstoffnummern und Entnahme-Suche
 
 Zum lokalen Testen:
 1. 0_NODEJS_PRUEFEN.bat

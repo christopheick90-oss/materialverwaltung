@@ -94,7 +94,9 @@ function smartTitleWord(value) {
 }
 
 function normalizeMaterialNumber(value) {
-  return String(value || '').replace(/\b([1-9])\s*[,\.]\s*(\d{4})\b/g, '$1.$2');
+  return String(value || '')
+    .replace(/\b([1-9])\s*[,\.]\s*(\d{4})\b/g, '$1.$2')
+    .replace(/\b1\s*(\d{4})\b/g, '1.$1');
 }
 
 function normalizeMaterialName(value) {
@@ -188,7 +190,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.9.7';
+const PROGRAM_VERSION = '0.9.8';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -395,6 +397,18 @@ function materialTitleText(material) {
   if (!thickness) return name;
   if (name.toLowerCase().includes(thickness.toLowerCase())) return name;
   return `${name} ${thickness}`;
+}
+
+function materialActivityInfoText(material) {
+  if (!material) return '';
+  const parts = [];
+  const article = normalizeArticleNumber(material.articleNumber);
+  const format = normalizeFormat(material.format);
+  const shelf = normalizeShelf(material.shelf);
+  if (article) parts.push(`Teilenr.: ${article}`);
+  if (format) parts.push(`Format: ${format}`);
+  if (shelf) parts.push(`Lagerplatz: ${shelf}`);
+  return parts.length ? ` (${parts.join(' · ')})` : '';
 }
 
 function inventoryStatusLabel(status) {
@@ -2062,7 +2076,7 @@ app.post('/api/materials/:id/stock', requireAuth, allowRoles('LASER', 'BUERO', '
   const extra = note ? ` Hinweis: ${note}` : '';
   const activityType = action === 'SET' ? 'KORREKTUR' : 'BESTAND';
   const undoLabel = action === 'SET' ? 'Korrektur rückgängig' : 'Bestandsbuchung rückgängig';
-  const activity = addActivity(activityType, `${req.user.name} hat ${materialTitleText(material)}: ${actionText} (${beforeText} → ${afterText}).${targetText}${extra}`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_STOCK', [beforeSnapshot], undoLabel) });
+  const activity = addActivity(activityType, `${req.user.name} hat ${materialTitleText(material)}${materialActivityInfoText(material)}: ${actionText} (${beforeText} → ${afterText}).${targetText}${extra}`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_STOCK', [beforeSnapshot], undoLabel) });
   saveDb();
   emitToAll('material:changed', { material, activity, message: `${material.name}: ${beforeText} → ${afterText}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   if (isMaterialLow(material)) {
@@ -2081,7 +2095,7 @@ app.post('/api/materials/:id/remove', requireAuth, allowRoles('LASER', 'BUERO', 
   const before = Number(material.stock);
   material.stock = Math.max(0, before - qty);
   material.updatedAt = nowIso();
-  const activity = addActivity('BESTAND', `${req.user.name} hat ${materialTitleText(material)}: entnommen (${before} → ${material.stock}).`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_REMOVE', [beforeSnapshot], 'Entnahme rückgängig') });
+  const activity = addActivity('BESTAND', `${req.user.name} hat ${materialTitleText(material)}${materialActivityInfoText(material)}: entnommen (${before} → ${material.stock}).`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_REMOVE', [beforeSnapshot], 'Entnahme rückgängig') });
   saveDb();
   emitToAll('material:changed', { material, activity, message: `${material.name}: Bestand ${before} → ${material.stock}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   if (isMaterialLow(material)) {

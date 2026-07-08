@@ -1,31 +1,31 @@
-# Teständerungen 0.9.7
+# Teständerungen 0.9.8
 
-Basis: v0.9.6 im Master-Design, weitergeführt als v0.9.7.
+Basis: v0.9.7 im Master-Design, weitergeführt als v0.9.8.
 
-## Neu in v0.9.7
+## Neu in v0.9.8
 
-- Materialnamen werden automatisch in eine saubere Schreibweise gebracht.
-- Beispiele:
-  - `almg3` wird `AlMg3`
-  - `almg 3` wird `AlMg3`
-  - `v2a` wird `V2A`
-  - `dc01` wird `DC01`
-  - `s235` wird `S235`
-  - `aluminium` wird `Aluminium`
-- Teilenr. wird automatisch großgeschrieben.
-- Die Korrektur wird beim Verlassen des Feldes und beim Speichern angewendet.
-- Server prüft die Schreibweise zusätzlich, damit Daten auch bei Import oder späterer Bearbeitung einheitlich bleiben.
-
-## Unverändert aus v0.9.5
-
-- Sonderformate wie `1000 x 1000` werden als `1000x1000` gespeichert.
-- Feld Teilenr. ist bei Materialanlage, Korrektur, Materialkarte, Suche und Admin-Materialpflege enthalten.
-- Master-Design bleibt Grundlage.
-
-## v0.9.7
+### Werkstoffnummern
 
 - Werkstoffnummern werden automatisch mit Punkt gespeichert.
-- Beispiele: `1,4404` → `1.4404`, `1,4571` → `1.4571`, `1,4301` → `1.4301`.
-- Die Korrektur gilt im Material-Anlegen-Fenster, bei der Admin-Korrektur und serverseitig beim Speichern.
-- Stärken bleiben weiterhin im Format `2,00 mm` / `2,50 mm`.
-- Master-Design bleibt unverändert.
+- Auch falsch gespeicherte Kurzformen werden beim Laden/Speichern wieder korrigiert.
+- Beispiele:
+  - `1,4404` wird `1.4404`
+  - `1,4571` wird `1.4571`
+  - `1,4301` wird `1.4301`
+  - `14571` wird `1.4571`
+  - `14404` wird `1.4404`
+  - `14301` wird `1.4301`
+
+### Entnahmen suchen
+
+- In **Historie** gibt es jetzt einen eigenen Block **Entnahmen suchen**.
+- Diese Suche ist getrennt von der normalen Materialsuche.
+- Angezeigt werden nur Vorgänge, in denen Material entnommen wurde.
+- Suchbar nach Material, Werkstoffnummer, Teilenr., Stärke, Format, Benutzer und Datum.
+
+## Unverändert
+
+- Stärken bleiben im Format `2,00 mm` / `2,50 mm`.
+- Sonderformate bleiben erhalten.
+- Teilenr. bleibt bei Materialanlage und Korrektur enthalten.
+- Master-Design bleibt Grundlage.

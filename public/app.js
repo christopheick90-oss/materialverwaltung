@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.9.7';
+const CLIENT_VERSION = '0.9.8';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -13,6 +13,7 @@ let materialSearchComposing = false;
 let adminMaterialEditFilter = '';
 let orderFilter = { text: '', status: 'all' };
 let inventoryHistoryFilter = { text: '', date: '' };
+let withdrawalHistoryFilter = { text: '' };
 let lastTypingAt = 0;
 
 const roleNames = { LASER: 'Laser', BUERO: 'Büro', CHEF: 'Chef', ADMIN: 'Admin' };
@@ -143,7 +144,9 @@ function smartTitleWord(word) {
 }
 
 function normalizeMaterialNumberInput(value) {
-  return String(value || '').replace(/\b([1-9])\s*[,\.]\s*(\d{4})\b/g, '$1.$2');
+  return String(value || '')
+    .replace(/\b([1-9])\s*[,\.]\s*(\d{4})\b/g, '$1.$2')
+    .replace(/\b1\s*(\d{4})\b/g, '1.$1');
 }
 
 function normalizeMaterialCaseInput(value) {
@@ -280,7 +283,9 @@ function normalizeSearchText(value) {
 
 const searchAliasGroups = [
   ['almg3', 'alm g3', 'alu', 'aluminium', 'aluminum'],
-  ['1.4301', '14301', 'v2a', 'edelstahl', 'niro', 'inox', 'rostfrei']
+  ['1.4301', '14301', 'v2a', 'edelstahl', 'niro', 'inox', 'rostfrei'],
+  ['1.4404', '14404', 'v4a', 'edelstahl', 'niro', 'inox', '316l'],
+  ['1.4571', '14571', 'v4a', 'edelstahl', 'niro', 'inox', '316ti']
 ];
 
 function baseSearchVariants(value) {
@@ -1945,8 +1950,73 @@ function renderOrderActions(order) {
 }
 
 function renderHistory() {
-  $('#history').innerHTML = `<div class="card"><h2>Historie</h2>${renderActivityList(state.activities)}</div>`;
+  const withdrawals = withdrawalActivityList();
+  const filtered = filteredWithdrawalActivities(withdrawals);
+  $('#history').innerHTML = `
+    <div class="card">
+      <h2>Entnahmen suchen</h2>
+      <p class="muted">Hier werden nur Entnahmen angezeigt. Suche nach Material, Teilenr., Stärke, Format, Benutzer oder Datum.</p>
+      <div class="searchbar inline-search"><strong>Entnahme</strong><input id="withdrawalHistorySearch" placeholder="z. B. 1.4571, AlMg3, Max, 08.07.2026 ..." value="${escapeHtml(withdrawalHistoryFilter.text)}"></div>
+      <div class="filter-summary"><span id="withdrawalHistoryCount">${filtered.length} von ${withdrawals.length} Entnahme(n)</span><button class="ghost mini" onclick="resetWithdrawalHistorySearch()">Suche zurücksetzen</button></div>
+      <div id="withdrawalHistoryResult">${filtered.length ? renderActivityList(filtered) : '<div class="empty">Keine Entnahme gefunden.</div>'}</div>
+    </div>
+    <div class="card"><h2>Gesamte Historie</h2>${renderActivityList(state.activities)}</div>
+  `;
+  const input = $('#withdrawalHistorySearch');
+  if (input) input.addEventListener('input', (event) => {
+    withdrawalHistoryFilter.text = event.target.value;
+    drawWithdrawalHistoryList();
+  });
 }
+
+function withdrawalActivityList() {
+  return (state.activities || [])
+    .filter(a => normalizeSearchText(`${a.type || ''} ${a.text || ''}`).includes('entnommen'))
+    .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+}
+
+function activityRelatedMaterialSearchText(activity) {
+  if (!activity) return '';
+  const ids = [activity.materialId, ...(Array.isArray(activity.materialIds) ? activity.materialIds : [])].filter(Boolean);
+  if (!ids.length) return '';
+  const allMaterials = [...(state.materials || []), ...(state.archivedMaterials || [])];
+  return allMaterials
+    .filter(m => ids.includes(m.id))
+    .map(m => materialSearchText(m))
+    .join(' ');
+}
+
+function withdrawalActivitySearchText(activity) {
+  return [
+    activity && activity.type,
+    activity && activity.text,
+    activity && activity.user,
+    activityRelatedMaterialSearchText(activity),
+    activity && activity.at ? fmtDate(activity.at) : '',
+    activity && activity.at ? new Date(activity.at).toLocaleDateString('de-DE') : ''
+  ].filter(Boolean).join(' ');
+}
+
+function filteredWithdrawalActivities(base = withdrawalActivityList()) {
+  const query = String(withdrawalHistoryFilter.text || '');
+  return base.filter(a => searchMatches(withdrawalActivitySearchText(a), query));
+}
+
+function drawWithdrawalHistoryList() {
+  const withdrawals = withdrawalActivityList();
+  const filtered = filteredWithdrawalActivities(withdrawals);
+  const count = $('#withdrawalHistoryCount');
+  if (count) count.textContent = `${filtered.length} von ${withdrawals.length} Entnahme(n)`;
+  const box = $('#withdrawalHistoryResult');
+  if (box) box.innerHTML = filtered.length ? renderActivityList(filtered) : '<div class="empty">Keine Entnahme gefunden.</div>';
+}
+
+window.resetWithdrawalHistorySearch = () => {
+  withdrawalHistoryFilter.text = '';
+  const input = $('#withdrawalHistorySearch');
+  if (input) input.value = '';
+  drawWithdrawalHistoryList();
+};
 
 function renderActivityList(items) {
   if (!items.length) return '<div class="empty">Keine Aktivitäten vorhanden.</div>';
@@ -2454,7 +2524,7 @@ window.openAdminMaterialEditModal = (materialId) => {
         <h2>Materialdaten korrigieren</h2>
         <p>Bestand bleibt unverändert. Nur Stammdaten werden korrigiert.</p>
       </div>
-      <span class="modal-version-pill">v0.9.7</span>
+      <span class="modal-version-pill">v0.9.8</span>
     </div>
     <div class="modal-subtitle-card"><strong>${escapeHtml(materialTitle(data))}</strong><br>${stockText}<br><span>Stärke, Sonderformat und Schreibweise werden automatisch vereinheitlicht, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</span></div>
     <form id="adminMaterialEditForm" class="form-grid material-input-form">
@@ -2538,7 +2608,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
         <h2>${isEdit ? 'Material bearbeiten' : 'Material anlegen'}</h2>
         <p>${isEdit ? 'Daten sauber korrigieren, Bestand bleibt kontrolliert.' : 'Neues Material geordnet anlegen.'}</p>
       </div>
-      <span class="modal-version-pill">v0.9.7</span>
+      <span class="modal-version-pill">v0.9.8</span>
     </div>
     <div class="modal-subtitle-card"><strong>Hinweis:</strong> Stärke, Sonderformat und Schreibweise werden automatisch einheitlich gespeichert, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</div>
     <form id="materialForm" class="form-grid material-input-form">
@@ -2931,7 +3001,7 @@ window.deleteNonOrderMaterial = async (materialId) => {
         <h2>Eintrag entfernen</h2>
         <p>Nur möglich bei Bestand 0 und ohne offene Bestellung.</p>
       </div>
-      <span class="modal-version-pill">v0.9.7</span>
+      <span class="modal-version-pill">v0.9.8</span>
     </div>
     <div class="modal-subtitle-card delete-warning-card">
       <strong>${escapeHtml(title)}</strong><br>
