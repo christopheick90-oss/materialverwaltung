@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.9.6';
+const CLIENT_VERSION = '0.9.7';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -142,10 +142,14 @@ function smartTitleWord(word) {
   return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
 }
 
+function normalizeMaterialNumberInput(value) {
+  return String(value || '').replace(/\b([1-9])\s*[,\.]\s*(\d{4})\b/g, '$1.$2');
+}
+
 function normalizeMaterialCaseInput(value) {
   const raw = String(value || '').trim().replace(/\s+/g, ' ');
   if (!raw) return '';
-  let text = raw;
+  let text = normalizeMaterialNumberInput(raw);
   const knownWords = { aluminium: 'Aluminium', alu: 'Alu', edelstahl: 'Edelstahl', stahl: 'Stahl', kupfer: 'Kupfer', messing: 'Messing', verzinkt: 'Verzinkt', schwarz: 'Schwarz', blank: 'Blank', rest: 'Rest' };
   text = text.split(' ').map(part => {
     const key = part.toLowerCase();
@@ -267,7 +271,7 @@ function attachFormatControls(selectSelector, customRowSelector, customInputSele
 }
 
 function normalizeSearchText(value) {
-  return String(value ?? '')
+  return normalizeMaterialNumberInput(value ?? '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -2450,7 +2454,7 @@ window.openAdminMaterialEditModal = (materialId) => {
         <h2>Materialdaten korrigieren</h2>
         <p>Bestand bleibt unverändert. Nur Stammdaten werden korrigiert.</p>
       </div>
-      <span class="modal-version-pill">v0.9.6</span>
+      <span class="modal-version-pill">v0.9.7</span>
     </div>
     <div class="modal-subtitle-card"><strong>${escapeHtml(materialTitle(data))}</strong><br>${stockText}<br><span>Stärke, Sonderformat und Schreibweise werden automatisch vereinheitlicht, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</span></div>
     <form id="adminMaterialEditForm" class="form-grid material-input-form">
@@ -2534,7 +2538,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
         <h2>${isEdit ? 'Material bearbeiten' : 'Material anlegen'}</h2>
         <p>${isEdit ? 'Daten sauber korrigieren, Bestand bleibt kontrolliert.' : 'Neues Material geordnet anlegen.'}</p>
       </div>
-      <span class="modal-version-pill">v0.9.6</span>
+      <span class="modal-version-pill">v0.9.7</span>
     </div>
     <div class="modal-subtitle-card"><strong>Hinweis:</strong> Stärke, Sonderformat und Schreibweise werden automatisch einheitlich gespeichert, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</div>
     <form id="materialForm" class="form-grid material-input-form">
@@ -2927,7 +2931,7 @@ window.deleteNonOrderMaterial = async (materialId) => {
         <h2>Eintrag entfernen</h2>
         <p>Nur möglich bei Bestand 0 und ohne offene Bestellung.</p>
       </div>
-      <span class="modal-version-pill">v0.9.6</span>
+      <span class="modal-version-pill">v0.9.7</span>
     </div>
     <div class="modal-subtitle-card delete-warning-card">
       <strong>${escapeHtml(title)}</strong><br>

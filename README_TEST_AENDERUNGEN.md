@@ -1,8 +1,8 @@
-# Teständerungen 0.9.6
+# Teständerungen 0.9.7
 
-Basis: v0.9.5 im Master-Design, weitergeführt als v0.9.6.
+Basis: v0.9.6 im Master-Design, weitergeführt als v0.9.7.
 
-## Neu in v0.9.6
+## Neu in v0.9.7
 
 - Materialnamen werden automatisch in eine saubere Schreibweise gebracht.
 - Beispiele:
@@ -21,3 +21,11 @@ Basis: v0.9.5 im Master-Design, weitergeführt als v0.9.6.
 - Sonderformate wie `1000 x 1000` werden als `1000x1000` gespeichert.
 - Feld Teilenr. ist bei Materialanlage, Korrektur, Materialkarte, Suche und Admin-Materialpflege enthalten.
 - Master-Design bleibt Grundlage.
+
+## v0.9.7
+
+- Werkstoffnummern werden automatisch mit Punkt gespeichert.
+- Beispiele: `1,4404` → `1.4404`, `1,4571` → `1.4571`, `1,4301` → `1.4301`.
+- Die Korrektur gilt im Material-Anlegen-Fenster, bei der Admin-Korrektur und serverseitig beim Speichern.
+- Stärken bleiben weiterhin im Format `2,00 mm` / `2,50 mm`.
+- Master-Design bleibt unverändert.
