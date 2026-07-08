@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.8.11",
-  "description": "Eckl Eco Technics Materialverwaltung V0.8.11 - Wareneingang mit Paketanzahl",
+  "version": "0.9.0",
+  "description": "Eckl Eco Technics Materialverwaltung V0.9.0 - Admin-Materialdaten korrigieren",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

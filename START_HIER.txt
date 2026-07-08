@@ -1,6 +1,5 @@
-V0.7.0 Render Build Fix
+V0.9.0 Admin-Materialkorrektur
+
+Zum lokalen Testen bitte 3_BROWSER_SERVER_TESTEN.bat starten und im Browser http://localhost:4170 öffnen.
 
 Für Render bitte RENDER_DEPLOY_ANLEITUNG.md lesen.
-Wichtigster Fix: Build Command auf
-rm -f package-lock.json && npm install --omit=dev --no-audit --no-fund
-setzen.

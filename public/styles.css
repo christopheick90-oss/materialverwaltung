@@ -250,3 +250,13 @@ button.active-filter{background:#222!important;color:#fff!important;border-color
 .order-material-title{display:block;font-size:18px;font-weight:900;line-height:1.2;margin-bottom:4px;color:#111}
 .order-material-strength{margin:6px 0 2px;font-size:14px;color:#111;border-left:4px solid var(--red);padding-left:8px;background:#f7f7f7;display:inline-block;padding-top:4px;padding-bottom:4px;padding-right:8px}
 .order-material-strength strong{font-weight:900}
+
+/* --- v0.9.0 Admin-Materialkorrektur --- */
+.admin-edit-card{border-left:5px solid var(--red)}
+.admin-edit-search{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0 14px}
+.admin-edit-search input{flex:1;min-width:260px}
+.admin-edit-scroll{margin-top:8px}
+.admin-edit-table{border:0;border-radius:0;min-width:980px}
+.admin-edit-table th,.admin-edit-table td{padding:9px 10px;font-size:13px}
+.admin-edit-table th{font-size:11px}
+@media(max-width:900px){.admin-edit-table{min-width:920px}.admin-edit-search input{min-width:100%}}

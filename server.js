@@ -131,7 +131,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.8.11';
+const PROGRAM_VERSION = '0.9.0';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -1454,7 +1454,8 @@ function buildState(user) {
       canMarkOrdered: ['BUERO', 'CHEF'].includes(user.role),
       canReceiveDelivery: ['LASER', 'BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canCreateMaterial: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
-      canEditMaterial: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
+      canEditMaterial: user.role === 'ADMIN',
+      canCorrectMaterial: user.role === 'ADMIN',
       canDeleteMaterial: ['CHEF', 'ADMIN'].includes(user.role),
       canAdjustStock: ['LASER', 'BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canInventory: ['LASER', 'BUERO', 'CHEF'].includes(user.role),
@@ -1756,7 +1757,26 @@ app.post('/api/materials', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (r
   }
 });
 
-app.patch('/api/materials/:id', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+
+function materialUpdateSummary(before, after) {
+  const changes = [];
+  const fields = [
+    ['name', 'Material'],
+    ['thickness', 'Stärke'],
+    ['format', 'Format'],
+    ['storage', 'Bereich'],
+    ['shelf', 'Lagerplatz'],
+    ['rest', 'Resttafel']
+  ];
+  fields.forEach(([key, label]) => {
+    const oldValue = key === 'rest' ? (before[key] ? 'ja' : 'nein') : cleanText(before[key] || '');
+    const newValue = key === 'rest' ? (after[key] ? 'ja' : 'nein') : cleanText(after[key] || '');
+    if (oldValue !== newValue) changes.push(`${label}: ${oldValue || '-'} → ${newValue || '-'}`);
+  });
+  return changes.join('; ');
+}
+
+app.patch('/api/materials/:id', requireAuth, allowRoles('ADMIN'), (req, res) => {
   const index = db.materials.findIndex(m => m.id === req.params.id && !m.archived);
   if (index === -1) return res.status(404).json({ error: 'Material wurde nicht gefunden.' });
   try {
@@ -1769,7 +1789,10 @@ app.patch('/api/materials/:id', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'
     db.orders.forEach(order => {
       if (order.materialId === material.id) order.materialName = material.name;
     });
-    const activity = addActivity('MATERIAL', `${req.user.name} hat Material bearbeitet: ${materialTitleText(material)}.`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_UPDATE', [beforeSnapshot], 'Materialbearbeitung rückgängig') });
+    const changeSummary = materialUpdateSummary(before, material);
+    const correctionNote = cleanText(req.body.correctionNote || '');
+    const activityText = `${req.user.name} hat Material bearbeitet: ${materialTitleText(material)}${changeSummary ? `. Änderung: ${changeSummary}` : ''}${correctionNote ? `. Grund: ${correctionNote}` : ''}.`;
+    const activity = addActivity('MATERIAL', activityText, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_UPDATE', [beforeSnapshot], 'Materialbearbeitung rückgängig') });
     saveDb();
     emitToAll('material:updated', { material, activity, message: `Material aktualisiert: ${materialTitleText(material)}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
     emitToAll('state:changed', { reason: 'material:updated' });

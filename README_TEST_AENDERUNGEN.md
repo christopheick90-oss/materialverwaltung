@@ -1,3 +1,28 @@
+# Teständerungen 0.9.0
+
+Basis: v0.8.11 im Master-Design, weitergeführt als v0.9.0.
+
+Geändert:
+
+- Neue Admin-Korrektur in `Admin > Materialpflege`.
+- Admin kann vorhandene Materialien suchen und Materialdaten bearbeiten.
+- Korrigierbar sind Materialname, Stärke, Format, Lagerbereich, Lagerplatz und Resttafel-Kennzeichnung.
+- Bestand, Pakete und Tafeln bleiben unverändert.
+- Optionaler Grund/Hinweis wird in der Historie gespeichert.
+- Auf Materialkarten sieht Admin zusätzlich den Button `Korrigieren`.
+
+Lokal testen:
+
+1. ZIP entpacken.
+2. `3_BROWSER_SERVER_TESTEN.bat` starten.
+3. Im Browser `http://localhost:4170` öffnen.
+4. Mit Admin anmelden.
+5. `Admin > Materialpflege` öffnen.
+6. Material suchen, `Korrigieren` anklicken und z. B. Format ändern.
+7. Speichern und prüfen, ob Bestand gleich bleibt und die Historie die Korrektur zeigt.
+
+---
+
 # Teständerungen 0.8.11
 
 Basis: letzte funktionierende 0.7.2-Testversion im Master-Design, jetzt als Version 0.8.11 geführt.

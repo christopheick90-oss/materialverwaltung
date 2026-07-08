@@ -1,4 +1,7 @@
-# Render Deploy Anleitung V0.8.11
+# Render Deploy Anleitung V0.9.0
+
+Diese Version basiert auf v0.8.11 und ergänzt die Admin-Materialkorrektur.
+
 
 1. ZIP entpacken.
 2. Inhalt des Ordners in GitHub hochladen, nicht die ZIP selbst.

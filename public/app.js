@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.8.11';
+const CLIENT_VERSION = '0.9.0';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -10,6 +10,7 @@ let socket = null;
 let materialFilter = { text: '', status: 'all', shelf: 'all', format: 'all', storage: 'all', sort: 'none' };
 let materialDrawTimer = null;
 let materialSearchComposing = false;
+let adminMaterialEditFilter = '';
 let orderFilter = { text: '', status: 'all' };
 let inventoryHistoryFilter = { text: '', date: '' };
 let lastTypingAt = 0;
@@ -1034,7 +1035,7 @@ function materialCardHtml(m) {
         ${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}
         ${state.permissions.canAdjustStock && !isKonsi(m) ? `<button class="secondary mini" onclick="openStockModal('${jsString(m.id)}','SET')">Bestand buchen</button>` : ''}
         ${!m.rest && state.permissions.canRequestOrder ? `<button class="primary mini" onclick="openOrderModal('${jsString(m.id)}')">Bestellung</button>` : (m.rest ? `<span class="badge gray">Resttafel</span>` : '')}
-        ${state.permissions.canEditMaterial ? `<button class="ghost mini" onclick="openMaterialModal('${jsString(m.id)}')">Bearbeiten</button>` : ''}
+        ${state.permissions.canCorrectMaterial ? `<button class="secondary mini" onclick="openAdminMaterialEditModal('${jsString(m.id)}')">Korrigieren</button>` : (state.permissions.canEditMaterial ? `<button class="ghost mini" onclick="openMaterialModal('${jsString(m.id)}')">Bearbeiten</button>` : '')}
         ${state.permissions.canDeleteMaterial ? `<button class="secondary danger mini" onclick="archiveMaterial('${jsString(m.id)}')">Archivieren</button>` : ''}
       </div>
     </div>
@@ -1797,6 +1798,66 @@ function renderActivityList(items) {
 
 
 
+
+function adminMaterialEditSearchText(material) {
+  return [
+    materialTitle(material),
+    material && material.name,
+    material && material.thickness,
+    material && material.format,
+    material && material.shelf,
+    material && storageLabel(material),
+    material && quantityLabel(material),
+    material && (material.rest ? 'Resttafel Restmaterial' : ''),
+    material && (material.deliveryPending ? 'Geliefert Wareneingang' : '')
+  ].filter(Boolean).join(' ');
+}
+
+function adminEditableMaterials() {
+  const query = normalizeSearchText(adminMaterialEditFilter || '');
+  return (state.materials || [])
+    .filter(m => !m.archived)
+    .filter(m => !query || normalizeSearchText(adminMaterialEditSearchText(m)).includes(query))
+    .sort((a, b) => materialTitle(a).localeCompare(materialTitle(b), 'de', { numeric: true, sensitivity: 'base' }));
+}
+
+function adminMaterialEditTableHtml() {
+  const materials = adminEditableMaterials();
+  const total = (state.materials || []).filter(m => !m.archived).length;
+  const visible = materials.slice(0, 120);
+  if (!total) return '<div class="empty">Noch keine aktiven Materialien vorhanden.</div>';
+  if (!visible.length) return '<div class="empty">Keine Materialien zur Suche gefunden.</div>';
+  return `
+    <div class="bulk-scroll admin-edit-scroll">
+      <table class="admin-edit-table">
+        <thead><tr><th>Material</th><th>Stärke</th><th>Format</th><th>Bestand</th><th>Lagerplatz</th><th>Status</th><th>Aktion</th></tr></thead>
+        <tbody>
+          ${visible.map(m => `<tr>
+            <td><strong>${escapeHtml(materialTitle(m))}</strong>${m.note ? `<br><small>${escapeHtml(m.note)}</small>` : ''}</td>
+            <td>${escapeHtml(normalizeThicknessInput(m.thickness || '') || '-')}</td>
+            <td><strong>${escapeHtml(m.format || '-')}</strong></td>
+            <td>${quantityLabel(m)}</td>
+            <td>${escapeHtml(materialLocationLabel(m))}</td>
+            <td>${materialStatusBadge(m)}</td>
+            <td><div class="row-actions"><button class="secondary mini" onclick="openAdminMaterialEditModal('${jsString(m.id)}')">Korrigieren</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button></div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="footer-note">${visible.length} von ${materials.length} Treffer(n) sichtbar${materials.length > visible.length ? ' · Suche genauer eingrenzen, um weitere Treffer zu sehen.' : ''}</div>
+  `;
+}
+
+function renderAdminMaterialEditTable() {
+  const target = $('#adminMaterialEditTable');
+  if (target) target.innerHTML = adminMaterialEditTableHtml();
+}
+
+window.setAdminMaterialEditFilter = (value) => {
+  adminMaterialEditFilter = value;
+  renderAdminMaterialEditTable();
+};
+
 function adminBulkMaterialRowHtml(index) {
   return `
     <tr class="bulk-material-row" data-index="${index}">
@@ -1834,6 +1895,12 @@ function renderAdminMaterials() {
       </div>
       <div class="footer-note">Aktuell angelegte Materialien: ${existingCount}. Normale Tafeln im Hauptlager bekommen Mindestbestand 2. Pakete, Konsi und Reste sind ausgenommen.</div>
     </div>
+    <div class="card admin-material-card admin-edit-card">
+      <h2>Materialdaten bearbeiten</h2>
+      <p class="muted">Für Admin-Korrekturen, wenn Material, Stärke, Format oder Lagerplatz falsch angelegt wurde. Der Bestand bleibt dabei unverändert.</p>
+      <div class="admin-edit-search"><strong>Suche</strong><input id="adminMaterialEditSearch" value="${escapeHtml(adminMaterialEditFilter)}" placeholder="Material, Stärke, Format oder Regal suchen ..."><button class="ghost mini" onclick="adminMaterialEditFilter=''; renderAdminMaterials();">Leeren</button></div>
+      <div id="adminMaterialEditTable">${adminMaterialEditTableHtml()}</div>
+    </div>
     <div class="card danger-zone-card">
       <h2>Materialdatenbank leeren</h2>
       <p class="muted">Nur für den Aufbau der echten Datenbank: löscht alle aktiven und archivierten Materialien. Benutzer, Einstellungen und Backups bleiben erhalten. Vor dem Löschen wird automatisch eine Sicherung erstellt.</p>
@@ -1848,6 +1915,8 @@ function renderAdminMaterials() {
   const body = $('#bulkMaterialBody');
   body.innerHTML = Array.from({ length: 8 }, (_, i) => adminBulkMaterialRowHtml(i)).join('');
   bindBulkMaterialRows();
+  const adminSearch = $('#adminMaterialEditSearch');
+  if (adminSearch) adminSearch.addEventListener('input', (event) => setAdminMaterialEditFilter(event.target.value));
 }
 
 function bindBulkMaterialRows() {
@@ -2211,10 +2280,80 @@ window.undoMaterialChange = async (materialId) => {
   } catch (error) { showToast('Fehler', error.message); }
 };
 
+
+window.openAdminMaterialEditModal = (materialId) => {
+  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Nur Admin darf Materialdaten korrigieren.');
+  const data = (state.materials || []).find(m => m.id === materialId && !m.archived);
+  if (!data) return showToast('Nicht gefunden', 'Material wurde nicht gefunden.');
+  const stockText = `${quantityLabel(data)} · ${escapeHtml(materialLocationLabel(data))}`;
+  openModal(`
+    <h2>Materialdaten korrigieren</h2>
+    <p class="muted"><strong>${escapeHtml(materialTitle(data))}</strong><br>Bestand bleibt unverändert: ${stockText}</p>
+    <form id="adminMaterialEditForm" class="form-grid">
+      <div class="form-full"><label>Material</label><input id="adminEditMatName" value="${escapeHtml(data.name || '')}" required placeholder="z. B. Aluminium"></div>
+      <div><label>Stärke</label><input id="adminEditMatThickness" value="${escapeHtml(data.thickness || '')}" placeholder="z. B. 2,0"></div>
+      <div><label>Format</label><select id="adminEditMatFormat">${formatOptions(data.format)}</select></div>
+      <div><label>Lagerbereich</label><select id="adminEditMatStorage"><option value="HAUPTLAGER" ${data.storage !== 'KONSI' ? 'selected' : ''}>Hauptlager</option><option value="KONSI" ${data.storage === 'KONSI' ? 'selected' : ''}>Konsi-Lager</option></select></div>
+      <div id="adminEditMatShelfRow"><label>Regal / Lagerplatz</label><select id="adminEditMatShelf">${shelfOptions(data.shelf)}</select></div>
+      <div id="adminEditMatKonsiInfo" class="notice hidden"><strong>Konsi-Lager:</strong> Standort Garage. Paketnummern und Paketmenge bleiben unverändert.</div>
+      <div class="form-full checkline"><input id="adminEditMatRest" type="checkbox" ${data.rest ? 'checked' : ''}><label for="adminEditMatRest">Ist Resttafel / Restmaterial</label></div>
+      <div class="form-full"><label>Grund / Hinweis zur Korrektur</label><textarea id="adminEditCorrectionNote" placeholder="z. B. Format war falsch angelegt"></textarea></div>
+      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Korrektur speichern</button></div>
+    </form>
+  `);
+  const updateAdminEditStorage = () => {
+    const isKonsiForm = $('#adminEditMatStorage').value === 'KONSI';
+    $('#adminEditMatShelfRow').classList.toggle('hidden', isKonsiForm);
+    $('#adminEditMatKonsiInfo').classList.toggle('hidden', !isKonsiForm);
+  };
+  $('#adminEditMatStorage').addEventListener('change', updateAdminEditStorage);
+  $('#adminEditMatThickness').addEventListener('blur', () => { $('#adminEditMatThickness').value = normalizeThicknessInput($('#adminEditMatThickness').value); });
+  updateAdminEditStorage();
+  $('#adminMaterialEditForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const isKonsiForm = $('#adminEditMatStorage').value === 'KONSI';
+    const existingPackageNumbers = Array.isArray(data.packageNumbers) ? [...data.packageNumbers] : [];
+    const existingPackageStock = Number(data.packageStock) || 0;
+    const existingSheetStock = Number(data.sheetStock ?? data.stock) || 0;
+    const nextPackageStock = isKonsiForm ? 0 : existingPackageStock;
+    const nextSheetStock = isKonsiForm ? 0 : existingSheetStock;
+    const nextStock = isKonsiForm ? (existingPackageNumbers.length || Number(data.stock) || 0) : (nextPackageStock + nextSheetStock);
+    const payload = {
+      name: $('#adminEditMatName').value,
+      category: isKonsiForm ? 'Konsi-Lager' : (data.category || ''),
+      type: $('#adminEditMatRest').checked ? 'Resttafel' : (data.type || 'Tafel'),
+      thickness: normalizeThicknessInput($('#adminEditMatThickness').value),
+      format: $('#adminEditMatFormat').value,
+      unit: isKonsiForm ? 'Pakete' : (data.unit || 'Tafeln'),
+      stock: nextStock,
+      packageStock: nextPackageStock,
+      sheetStock: nextSheetStock,
+      packageNumbers: isKonsiForm ? existingPackageNumbers : [],
+      minStock: isKonsiForm || $('#adminEditMatRest').checked ? 0 : DEFAULT_MATERIAL_MIN_STOCK,
+      storage: $('#adminEditMatStorage').value,
+      shelf: isKonsiForm ? konsiLocation() : $('#adminEditMatShelf').value,
+      compartment: data.compartment || '',
+      supplier: data.supplier || '',
+      articleNumber: data.articleNumber || '',
+      rest: $('#adminEditMatRest').checked,
+      note: data.note || '',
+      correctionNote: $('#adminEditCorrectionNote').value
+    };
+    try {
+      await saveMaterialRequest(`/api/materials/${materialId}`, 'PATCH', payload, true);
+      closeModal();
+      showToast('Materialdaten korrigiert', materialTitle({ ...data, ...payload }));
+      await loadState(true);
+      if (currentPage === 'adminMaterials') renderCurrentPage();
+    } catch (error) { showToast('Fehler', error.message); }
+  });
+};
+
 window.openMaterialModal = (materialId = '', presetStorage = '') => {
-  if (!state.permissions.canCreateMaterial && !state.permissions.canEditMaterial) return showToast('Keine Berechtigung', 'Material darf nur von Büro oder Chef verwaltet werden.');
   const m = materialId ? state.materials.find(x => x.id === materialId) : null;
   const isEdit = Boolean(m);
+  if (isEdit && !state.permissions.canEditMaterial) return showToast('Keine Berechtigung', 'Materialdaten darf nur der Admin bearbeiten.');
+  if (!isEdit && !state.permissions.canCreateMaterial) return showToast('Keine Berechtigung', 'Material darf nur von Büro, Chef oder Admin angelegt werden.');
   const data = m || { name:'', category:'', type:'Tafel', thickness:'', format:'', unit: presetStorage === 'KONSI' ? 'Pakete' : 'Tafeln', stock:0, sheetStock:0, packageNumbers:[], minStock:DEFAULT_MATERIAL_MIN_STOCK, storage: presetStorage || 'HAUPTLAGER', shelf: presetStorage === 'KONSI' ? konsiLocation() : 'Regal 1', compartment:'', supplier:'', articleNumber:'', rest:false, note:'' };
   if (!data.storage) data.storage = 'HAUPTLAGER';
   if (!data.shelf) data.shelf = data.storage === 'KONSI' ? konsiLocation() : 'Regal 1';
