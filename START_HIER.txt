@@ -1,5 +1,4 @@
-V0.9.0 Admin-Materialkorrektur
+V0.9.5 Sonderformate und Teilenummern
 
-Zum lokalen Testen bitte 3_BROWSER_SERVER_TESTEN.bat starten und im Browser http://localhost:4170 öffnen.
-
-Für Render bitte RENDER_DEPLOY_ANLEITUNG.md lesen.
+Start: 3_BROWSER_SERVER_TESTEN.bat
+Admin testen: admin / admin123

@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "0.9.0",
-  "description": "Eckl Eco Technics Materialverwaltung V0.9.0 - Admin-Materialdaten korrigieren",
+  "version": "0.9.5",
+  "description": "Eckl Eco Technics Materialverwaltung V0.9.5 - Sonderformate und Teilenummern",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

@@ -116,22 +116,28 @@ function normalizeStrengthList(value) {
 function normalizeThickness(value) {
   const text = cleanText(value);
   if (!text) return '';
-  if (/mm$/i.test(text)) return text.replace(/\s*mm$/i, ' mm');
-  if (/^[0-9]+([,.][0-9]+)?$/.test(text)) return `${text} mm`;
+  const withoutUnit = text.replace(/\s*mm\s*$/i, '').trim();
+  if (/^[0-9]+([,.][0-9]+)?$/.test(withoutUnit)) {
+    const number = Number(withoutUnit.replace(',', '.'));
+    if (Number.isFinite(number)) {
+      return `${number.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mm`;
+    }
+  }
   return text;
 }
 
 function normalizeFormat(value) {
-  const text = cleanText(value).toLowerCase().replace(/\s+/g, '');
-  const match = text.match(/(4000|3000|2500|2000)[x×](2000|1500|1250|1000)/);
-  const normalized = match ? `${match[1]}x${match[2]}` : '';
-  return ALLOWED_FORMATS.includes(normalized) ? normalized : '3000x1500';
+  const raw = cleanText(value);
+  if (!raw) return '3000x1500';
+  const text = raw.toLowerCase().replace(/\s+/g, '').replace('×', 'x').replace('*', 'x');
+  const match = text.match(/(\d{3,5})x(\d{3,5})/);
+  return match ? `${match[1]}x${match[2]}` : '3000x1500';
 }
 
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.9.0';
+const PROGRAM_VERSION = '0.9.5';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -225,6 +231,18 @@ function materialSheetStockValue(material) {
 
 function isMaterialLow(material) {
   return materialUsesSheetMinimum(material) && !material.deliveryPending && materialSheetStockValue(material) <= DEFAULT_MATERIAL_MIN_STOCK;
+}
+
+function materialHasActiveOrder(materialId) {
+  const activeStatuses = ['ANGEFORDERT', 'FREIGEGEBEN', 'BESTELLT', 'TEILGELIEFERT'];
+  return (db.orders || []).some(order => order.materialId === materialId && activeStatuses.includes(order.status));
+}
+
+function materialDeleteBlockReason(material) {
+  if (!material) return 'Material wurde nicht gefunden.';
+  if (materialHasActiveOrder(material.id)) return 'Dieses Material hat noch eine offene Bestellung und darf nicht gelöscht werden.';
+  if (!isEmptyMaterial(material)) return 'Dieses Material hat noch Bestand. Löschen ist erst bei Bestand 0 erlaubt.';
+  return '';
 }
 
 function quantityText(material) {
@@ -1457,6 +1475,7 @@ function buildState(user) {
       canEditMaterial: user.role === 'ADMIN',
       canCorrectMaterial: user.role === 'ADMIN',
       canDeleteMaterial: ['CHEF', 'ADMIN'].includes(user.role),
+      canDeleteNonOrderMaterial: ['LASER', 'ADMIN'].includes(user.role),
       canAdjustStock: ['LASER', 'BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canInventory: ['LASER', 'BUERO', 'CHEF'].includes(user.role),
       canSeeAdmin: ['CHEF', 'ADMIN'].includes(user.role),
@@ -1764,6 +1783,7 @@ function materialUpdateSummary(before, after) {
     ['name', 'Material'],
     ['thickness', 'Stärke'],
     ['format', 'Format'],
+    ['articleNumber', 'Teilenr.'],
     ['storage', 'Bereich'],
     ['shelf', 'Lagerplatz'],
     ['rest', 'Resttafel']
@@ -1800,6 +1820,22 @@ app.patch('/api/materials/:id', requireAuth, allowRoles('ADMIN'), (req, res) => 
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
+});
+
+app.post('/api/materials/:id/delete-non-order', requireAuth, allowRoles('LASER', 'ADMIN'), (req, res) => {
+  const material = db.materials.find(m => m.id === req.params.id && !m.archived);
+  if (!material) return res.status(404).json({ error: 'Material wurde nicht gefunden.' });
+  const blockReason = materialDeleteBlockReason(material);
+  if (blockReason) return res.status(400).json({ error: blockReason });
+  const beforeSnapshot = materialSnapshotById(material.id);
+  const note = cleanText(req.body.note || '');
+  material.archived = true;
+  material.updatedAt = nowIso();
+  const activity = addActivity('MATERIAL', `${req.user.name} hat Material aus der aktiven Liste gelöscht: ${materialTitleText(material)}${note ? `. Grund: ${note}` : ''}.`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_ARCHIVE', [beforeSnapshot], 'Löschen rückgängig') });
+  saveDb();
+  emitToAll('material:deleted', { material, activity, message: `Material gelöscht: ${materialTitleText(material)}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('state:changed', { reason: 'material:delete-non-order', version: PROGRAM_VERSION });
+  res.json({ ok: true, material, activity, version: PROGRAM_VERSION });
 });
 
 app.delete('/api/materials/:id', requireAuth, allowRoles('CHEF', 'ADMIN'), (req, res) => {

@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.9.0';
+const CLIENT_VERSION = '0.9.5';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -22,6 +22,7 @@ const defaultShelves = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', '
 const defaultKonsiLocation = 'Garage';
 const inventoryRequiredAreas = [...defaultShelves, 'KONSI'];
 const materialFormats = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
+const CUSTOM_FORMAT_VALUE = '__CUSTOM_FORMAT__';
 const DEFAULT_MATERIAL_MIN_STOCK = 2;
 
 const pages = [
@@ -123,15 +124,90 @@ function parsePackageNumbers(value) {
 function normalizeThicknessInput(value) {
   const text = String(value || '').trim();
   if (!text) return '';
-  if (/mm$/i.test(text)) return text.replace(/\s*mm$/i, ' mm');
-  if (/^[0-9]+([,.][0-9]+)?$/.test(text)) return `${text} mm`;
+  const withoutUnit = text.replace(/\s*mm\s*$/i, '').trim();
+  if (/^[0-9]+([,.][0-9]+)?$/.test(withoutUnit)) {
+    const number = Number(withoutUnit.replace(',', '.'));
+    if (Number.isFinite(number)) {
+      return `${number.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mm`;
+    }
+  }
   return text;
 }
 
-function normalizeFormatValue(value) {
-  const text = String(value || '').trim().toLowerCase().replace(/\s+/g, '');
-  const match = text.match(/(4000|3000|2500|2000)[x×](2000|1500|1250|1000)/);
-  return match ? `${match[1]}x${match[2]}` : '3000x1500';
+function attachThicknessAutoFormat(inputSelector, previewSelector = '') {
+  const input = $(inputSelector);
+  if (!input) return;
+  const updatePreview = () => {
+    const preview = previewSelector ? $(previewSelector) : null;
+    if (!preview) return;
+    const normalized = normalizeThicknessInput(input.value);
+    preview.textContent = normalized ? `Wird gespeichert als: ${normalized}` : 'Beispiel: 2,00 mm oder 2,50 mm';
+  };
+  input.addEventListener('input', updatePreview);
+  input.addEventListener('blur', () => {
+    input.value = normalizeThicknessInput(input.value);
+    updatePreview();
+  });
+  updatePreview();
+}
+
+function normalizeFormatValue(value, fallback = '3000x1500') {
+  const raw = String(value || '').trim();
+  if (!raw || raw === CUSTOM_FORMAT_VALUE) return fallback;
+  const text = raw.toLowerCase().replace(/\s+/g, '').replace('×', 'x').replace('*', 'x');
+  const match = text.match(/(\d{3,5})x(\d{3,5})/);
+  if (match) return `${match[1]}x${match[2]}`;
+  return fallback;
+}
+
+function isStandardFormatValue(value) {
+  const normalized = normalizeFormatValue(value, '');
+  return materialFormats.includes(normalized);
+}
+
+function formatDisplayValue(value) {
+  return normalizeFormatValue(value, String(value || '').trim());
+}
+
+function readFormatControls(selectSelector, customSelector) {
+  const select = $(selectSelector);
+  const custom = $(customSelector);
+  if (!select) return '3000x1500';
+  if (select.value === CUSTOM_FORMAT_VALUE) {
+    return normalizeFormatValue(custom ? custom.value : '', '3000x1500');
+  }
+  return normalizeFormatValue(select.value, '3000x1500');
+}
+
+
+function setFormatSelectValue(selector, value) {
+  const select = $(selector);
+  if (!select) return;
+  const normalized = normalizeFormatValue(value, '3000x1500');
+  const exists = Array.from(select.options || []).some(option => option.value === normalized);
+  if (!exists) select.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(normalized)}">${escapeHtml(normalized)} · Sonderformat</option>`);
+  select.value = normalized;
+}
+
+function attachFormatControls(selectSelector, customRowSelector, customInputSelector, previewSelector = '') {
+  const select = $(selectSelector);
+  const row = $(customRowSelector);
+  const input = $(customInputSelector);
+  const preview = previewSelector ? $(previewSelector) : null;
+  if (!select || !row || !input) return;
+  const update = () => {
+    const custom = select.value === CUSTOM_FORMAT_VALUE;
+    row.classList.toggle('hidden', !custom);
+    const normalized = custom ? normalizeFormatValue(input.value, '') : normalizeFormatValue(select.value, '');
+    if (preview) preview.textContent = normalized ? `Wird gespeichert als: ${normalized}` : 'Beispiel: 1000 x 1000';
+  };
+  select.addEventListener('change', update);
+  input.addEventListener('input', update);
+  input.addEventListener('blur', () => {
+    input.value = normalizeFormatValue(input.value, input.value);
+    update();
+  });
+  update();
 }
 
 function normalizeSearchText(value) {
@@ -330,9 +406,12 @@ function sheetWeightShortText(material) {
   return `ca. ${oneSheet.toFixed(1).replace('.', ',')} kg/Tafel`;
 }
 
-function formatOptions(selected = '') {
-  const active = normalizeFormatValue(selected);
-  return materialFormats.map(format => `<option value="${escapeHtml(format)}" ${format === active ? 'selected' : ''}>${escapeHtml(format)}</option>`).join('');
+function formatOptions(selected = '', includeCustom = false) {
+  const active = normalizeFormatValue(selected, '');
+  const custom = active && !materialFormats.includes(active);
+  const standardOptions = materialFormats.map(format => `<option value="${escapeHtml(format)}" ${format === active ? 'selected' : ''}>${escapeHtml(format)}</option>`).join('');
+  if (includeCustom) return standardOptions + `<option value="${CUSTOM_FORMAT_VALUE}" ${custom ? 'selected' : ''}>Sonderformat</option>`;
+  return standardOptions + (custom ? `<option value="${escapeHtml(active)}" selected>${escapeHtml(active)} · Sonderformat</option>` : '');
 }
 
 function statusBadge(status) {
@@ -376,6 +455,23 @@ function materialStatus(material) {
 function materialStatusBadge(material) {
   const s = materialStatus(material);
   return `<span class="badge ${s.cls}">${s.label}</span>`;
+}
+
+function materialHasActiveOrderClient(material) {
+  if (!material) return false;
+  const activeStatuses = ['ANGEFORDERT', 'FREIGEGEBEN', 'BESTELLT', 'TEILGELIEFERT'];
+  return (state.orders || []).some(order => order.materialId === material.id && activeStatuses.includes(order.status));
+}
+
+function materialDeleteBlockReasonClient(material) {
+  if (!material) return 'Material wurde nicht gefunden.';
+  if (materialHasActiveOrderClient(material)) return 'Dazu gibt es noch eine offene Bestellung.';
+  if (!isEmptyMaterialClient(material)) return 'Dieses Material hat noch Bestand. Löschen ist erst bei Bestand 0 erlaubt.';
+  return '';
+}
+
+function materialCanDeleteWithoutOrderClient(material) {
+  return !materialDeleteBlockReasonClient(material);
 }
 
 function storageLabel(material) {
@@ -690,7 +786,7 @@ const adminMenuGroups = [
     title: 'Material & Listen',
     text: 'Materialdaten pflegen, importieren und archivieren',
     items: [
-      { page: 'adminMaterials', title: 'Materialpflege', text: 'Mehrfachanlage, leere Daten löschen' },
+      { page: 'adminMaterials', title: 'Materialpflege', text: 'Mehrfachanlage, Korrektur, Einzel-Löschen' },
       { page: 'adminImportExport', title: 'Import & Export', text: 'CSV und Google-Sheets-Daten' },
       { page: 'adminArchive', title: 'Archiv', text: 'Archivierte Materialien wiederherstellen' }
     ]
@@ -1025,8 +1121,9 @@ function materialCardHtml(m) {
       <div class="material-head"><h3>${escapeHtml(materialTitle(m))}</h3>${materialStatusBadge(m)}</div>
       <div class="meta compact-material">
         <div><span>Menge</span><strong>${materialCardQuantityLabel(m)}</strong></div>
-        <div><span>Format</span><strong>${escapeHtml(m.format || '-')}</strong></div>
+        <div><span>Format</span><strong>${escapeHtml(formatDisplayValue(m.format || '-'))}</strong></div>
         <div><span>Lagerplatz</span><strong>${escapeHtml(materialLocationLabel(m))}</strong></div>
+        ${m.articleNumber ? `<div><span>Teilenr.</span><strong>${escapeHtml(m.articleNumber)}</strong></div>` : ''}
       </div>
       <div class="stock-fill"><span style="width:${fill}%"></span></div>
       <div class="actions">
@@ -1036,7 +1133,8 @@ function materialCardHtml(m) {
         ${state.permissions.canAdjustStock && !isKonsi(m) ? `<button class="secondary mini" onclick="openStockModal('${jsString(m.id)}','SET')">Bestand buchen</button>` : ''}
         ${!m.rest && state.permissions.canRequestOrder ? `<button class="primary mini" onclick="openOrderModal('${jsString(m.id)}')">Bestellung</button>` : (m.rest ? `<span class="badge gray">Resttafel</span>` : '')}
         ${state.permissions.canCorrectMaterial ? `<button class="secondary mini" onclick="openAdminMaterialEditModal('${jsString(m.id)}')">Korrigieren</button>` : (state.permissions.canEditMaterial ? `<button class="ghost mini" onclick="openMaterialModal('${jsString(m.id)}')">Bearbeiten</button>` : '')}
-        ${state.permissions.canDeleteMaterial ? `<button class="secondary danger mini" onclick="archiveMaterial('${jsString(m.id)}')">Archivieren</button>` : ''}
+        ${state.permissions.canDeleteNonOrderMaterial && materialCanDeleteWithoutOrderClient(m) ? `<button class="secondary danger mini" onclick="deleteNonOrderMaterial('${jsString(m.id)}')">Löschen</button>` : ''}
+        ${state.permissions.canDeleteMaterial && !state.permissions.canDeleteNonOrderMaterial ? `<button class="secondary danger mini" onclick="archiveMaterial('${jsString(m.id)}')">Archivieren</button>` : ''}
       </div>
     </div>
   `;
@@ -1054,7 +1152,7 @@ function renderDeliveredMaterials() {
     <div class="card delivered-panel delivered-panel-small">
       <div class="panel-head"><h2>Geliefert</h2><span class="badge green">Wareneingang</span></div>
       <div class="quick-list delivered-list delivered-list-small">
-        ${delivered.map(m => `<div class="quick-item delivered-mini"><strong>${escapeHtml(materialTitle(m))}</strong><small>${materialCardQuantityLabel(m)} · Maße: ${escapeHtml(m.format || '-')} · ${escapeHtml(materialLocationLabel(m))}</small><div class="row-actions">${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}<button class="ghost mini" onclick="openStockModal('${jsString(m.id)}','REMOVE')">Entnahme</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button></div></div>`).join('')}
+        ${delivered.map(m => `<div class="quick-item delivered-mini"><strong>${escapeHtml(materialTitle(m))}</strong><small>${materialCardQuantityLabel(m)} · Maße: ${escapeHtml(formatDisplayValue(m.format || '-'))} · ${escapeHtml(materialLocationLabel(m))}</small><div class="row-actions">${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}<button class="ghost mini" onclick="openStockModal('${jsString(m.id)}','REMOVE')">Entnahme</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button></div></div>`).join('')}
       </div>
       ${delivered.length >= 6 ? '<div class="footer-note">Weitere gelieferte Positionen sind unten in der Materialliste sichtbar.</div>' : ''}
     </div>`;
@@ -1592,6 +1690,7 @@ window.openInventoryExtraItemModal = (sessionId) => {
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Hinzufügen</button></div>
     </form>
   `);
+  attachThicknessAutoFormat('#extraInvThickness');
   $('#inventoryExtraItemForm').addEventListener('submit', async event => {
     event.preventDefault();
     try {
@@ -1805,6 +1904,7 @@ function adminMaterialEditSearchText(material) {
     material && material.name,
     material && material.thickness,
     material && material.format,
+    material && material.articleNumber,
     material && material.shelf,
     material && storageLabel(material),
     material && quantityLabel(material),
@@ -1830,16 +1930,17 @@ function adminMaterialEditTableHtml() {
   return `
     <div class="bulk-scroll admin-edit-scroll">
       <table class="admin-edit-table">
-        <thead><tr><th>Material</th><th>Stärke</th><th>Format</th><th>Bestand</th><th>Lagerplatz</th><th>Status</th><th>Aktion</th></tr></thead>
+        <thead><tr><th>Material</th><th>Stärke</th><th>Format</th><th>Teilenr.</th><th>Bestand</th><th>Lagerplatz</th><th>Status</th><th>Aktion</th></tr></thead>
         <tbody>
           ${visible.map(m => `<tr>
             <td><strong>${escapeHtml(materialTitle(m))}</strong>${m.note ? `<br><small>${escapeHtml(m.note)}</small>` : ''}</td>
             <td>${escapeHtml(normalizeThicknessInput(m.thickness || '') || '-')}</td>
-            <td><strong>${escapeHtml(m.format || '-')}</strong></td>
+            <td><strong>${escapeHtml(formatDisplayValue(m.format || '-'))}</strong></td>
+            <td>${escapeHtml(m.articleNumber || '-')}</td>
             <td>${quantityLabel(m)}</td>
             <td>${escapeHtml(materialLocationLabel(m))}</td>
             <td>${materialStatusBadge(m)}</td>
-            <td><div class="row-actions"><button class="secondary mini" onclick="openAdminMaterialEditModal('${jsString(m.id)}')">Korrigieren</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button></div></td>
+            <td><div class="row-actions"><button class="secondary mini" onclick="openAdminMaterialEditModal('${jsString(m.id)}')">Korrigieren</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button>${state.permissions.canDeleteNonOrderMaterial && materialCanDeleteWithoutOrderClient(m) ? `<button class="secondary danger mini" onclick="deleteNonOrderMaterial('${jsString(m.id)}')">Löschen</button>` : ''}</div></td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -2287,17 +2388,26 @@ window.openAdminMaterialEditModal = (materialId) => {
   if (!data) return showToast('Nicht gefunden', 'Material wurde nicht gefunden.');
   const stockText = `${quantityLabel(data)} · ${escapeHtml(materialLocationLabel(data))}`;
   openModal(`
-    <h2>Materialdaten korrigieren</h2>
-    <p class="muted"><strong>${escapeHtml(materialTitle(data))}</strong><br>Bestand bleibt unverändert: ${stockText}</p>
-    <form id="adminMaterialEditForm" class="form-grid">
-      <div class="form-full"><label>Material</label><input id="adminEditMatName" value="${escapeHtml(data.name || '')}" required placeholder="z. B. Aluminium"></div>
-      <div><label>Stärke</label><input id="adminEditMatThickness" value="${escapeHtml(data.thickness || '')}" placeholder="z. B. 2,0"></div>
-      <div><label>Format</label><select id="adminEditMatFormat">${formatOptions(data.format)}</select></div>
-      <div><label>Lagerbereich</label><select id="adminEditMatStorage"><option value="HAUPTLAGER" ${data.storage !== 'KONSI' ? 'selected' : ''}>Hauptlager</option><option value="KONSI" ${data.storage === 'KONSI' ? 'selected' : ''}>Konsi-Lager</option></select></div>
-      <div id="adminEditMatShelfRow"><label>Regal / Lagerplatz</label><select id="adminEditMatShelf">${shelfOptions(data.shelf)}</select></div>
+    <div class="modal-titlebar material-input-titlebar">
+      <div>
+        <span class="modal-kicker">Admin-Korrektur</span>
+        <h2>Materialdaten korrigieren</h2>
+        <p>Bestand bleibt unverändert. Nur Stammdaten werden korrigiert.</p>
+      </div>
+      <span class="modal-version-pill">v0.9.5</span>
+    </div>
+    <div class="modal-subtitle-card"><strong>${escapeHtml(materialTitle(data))}</strong><br>${stockText}<br><span>Stärke und Sonderformat werden automatisch vereinheitlicht, z. B. <b>2,50 mm</b> und <b>1000x1000</b>.</span></div>
+    <form id="adminMaterialEditForm" class="form-grid material-input-form">
+      <div class="form-panel form-full"><label>Material</label><input id="adminEditMatName" value="${escapeHtml(data.name || '')}" required placeholder="z. B. Aluminium"></div>
+      <div class="form-panel"><label>Stärke</label><input id="adminEditMatThickness" value="${escapeHtml(data.thickness || '')}" placeholder="z. B. 2 oder 2,5" inputmode="decimal"><div id="adminEditMatThicknessPreview" class="thickness-preview"></div></div>
+      <div class="form-panel"><label>Format</label><select id="adminEditMatFormat">${formatOptions(data.format, true)}</select><div class="format-hint">Standardformat oder Sonderformat auswählen.</div></div>
+      <div id="adminEditMatCustomFormatRow" class="form-panel ${isStandardFormatValue(data.format) || !data.format ? 'hidden' : ''}"><label>Sonderformat</label><input id="adminEditMatCustomFormat" value="${isStandardFormatValue(data.format) ? '' : escapeHtml(formatDisplayValue(data.format || ''))}" placeholder="z. B. 1000 x 1000" inputmode="numeric"><div id="adminEditMatCustomFormatPreview" class="thickness-preview"></div></div>
+      <div class="form-panel"><label>Teilenr.</label><input id="adminEditMatArticleNumber" value="${escapeHtml(data.articleNumber || '')}" placeholder="z. B. T-12345"></div>
+      <div class="form-panel"><label>Lagerbereich</label><select id="adminEditMatStorage"><option value="HAUPTLAGER" ${data.storage !== 'KONSI' ? 'selected' : ''}>Hauptlager</option><option value="KONSI" ${data.storage === 'KONSI' ? 'selected' : ''}>Konsi-Lager</option></select></div>
+      <div id="adminEditMatShelfRow" class="form-panel"><label>Regal / Lagerplatz</label><select id="adminEditMatShelf">${shelfOptions(data.shelf)}</select></div>
       <div id="adminEditMatKonsiInfo" class="notice hidden"><strong>Konsi-Lager:</strong> Standort Garage. Paketnummern und Paketmenge bleiben unverändert.</div>
       <div class="form-full checkline"><input id="adminEditMatRest" type="checkbox" ${data.rest ? 'checked' : ''}><label for="adminEditMatRest">Ist Resttafel / Restmaterial</label></div>
-      <div class="form-full"><label>Grund / Hinweis zur Korrektur</label><textarea id="adminEditCorrectionNote" placeholder="z. B. Format war falsch angelegt"></textarea></div>
+      <div class="form-panel form-full"><label>Grund / Hinweis zur Korrektur</label><textarea id="adminEditCorrectionNote" placeholder="z. B. Format war falsch angelegt"></textarea></div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Korrektur speichern</button></div>
     </form>
   `);
@@ -2307,7 +2417,8 @@ window.openAdminMaterialEditModal = (materialId) => {
     $('#adminEditMatKonsiInfo').classList.toggle('hidden', !isKonsiForm);
   };
   $('#adminEditMatStorage').addEventListener('change', updateAdminEditStorage);
-  $('#adminEditMatThickness').addEventListener('blur', () => { $('#adminEditMatThickness').value = normalizeThicknessInput($('#adminEditMatThickness').value); });
+  attachThicknessAutoFormat('#adminEditMatThickness', '#adminEditMatThicknessPreview');
+  attachFormatControls('#adminEditMatFormat', '#adminEditMatCustomFormatRow', '#adminEditMatCustomFormat', '#adminEditMatCustomFormatPreview');
   updateAdminEditStorage();
   $('#adminMaterialEditForm').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -2323,7 +2434,7 @@ window.openAdminMaterialEditModal = (materialId) => {
       category: isKonsiForm ? 'Konsi-Lager' : (data.category || ''),
       type: $('#adminEditMatRest').checked ? 'Resttafel' : (data.type || 'Tafel'),
       thickness: normalizeThicknessInput($('#adminEditMatThickness').value),
-      format: $('#adminEditMatFormat').value,
+      format: readFormatControls('#adminEditMatFormat', '#adminEditMatCustomFormat'),
       unit: isKonsiForm ? 'Pakete' : (data.unit || 'Tafeln'),
       stock: nextStock,
       packageStock: nextPackageStock,
@@ -2334,7 +2445,7 @@ window.openAdminMaterialEditModal = (materialId) => {
       shelf: isKonsiForm ? konsiLocation() : $('#adminEditMatShelf').value,
       compartment: data.compartment || '',
       supplier: data.supplier || '',
-      articleNumber: data.articleNumber || '',
+      articleNumber: $('#adminEditMatArticleNumber').value,
       rest: $('#adminEditMatRest').checked,
       note: data.note || '',
       correctionNote: $('#adminEditCorrectionNote').value
@@ -2359,17 +2470,26 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
   if (!data.shelf) data.shelf = data.storage === 'KONSI' ? konsiLocation() : 'Regal 1';
   const mainStockValue = data.storage === 'KONSI' ? (Number(data.stock) || 0) : (Number(data.sheetStock ?? data.stock) || 0);
   openModal(`
-    <h2>${isEdit ? 'Material bearbeiten' : 'Material anlegen'}</h2>
-    <p class="muted">Kurzansicht: Material und Stärke stehen oben in der Überschrift. Darunter nur Menge und Lagerplatz.</p>
-    <form id="materialForm" class="form-grid">
-      <div class="form-full"><label>Material</label><input id="matName" value="${escapeHtml(data.name)}" required placeholder="z. B. Aluminium"></div>
-      <div><label>Stärke</label><input id="matThickness" value="${escapeHtml(data.thickness)}" placeholder="z. B. 2,0"></div>
-      <div><label>Größe</label><select id="matFormat">${formatOptions(data.format)}</select></div>
-      <div><label>Lagerbereich</label><select id="matStorage"><option value="HAUPTLAGER" ${data.storage !== 'KONSI' ? 'selected' : ''}>Hauptlager</option><option value="KONSI" ${data.storage === 'KONSI' ? 'selected' : ''}>Konsi-Lager</option></select></div>
-      <div><label id="matStockLabel">Menge</label><input id="matStock" type="number" min="0" step="1" value="${mainStockValue}"></div>
-      <div id="matPackageNumbersRow" class="form-full"><label>Konsi-Paketnummern</label><textarea id="matPackageNumbers" placeholder="Eine Nummer pro Zeile oder mit Komma getrennt ...">${escapeHtml((data.packageNumbers || []).join('\n'))}</textarea><div class="format-hint">Diese Nummern werden bei der Paket-Entnahme als Auswahl angezeigt. Wenn Nummern eingetragen sind, wird die Paketmenge automatisch daraus berechnet.</div></div>
-      <div><label>Mindestbestand</label><input id="matMinStock" type="number" min="0" step="1" value="${materialMinStock(data)}" readonly><div class="format-hint">Fester Wert: 2 Tafeln. Pakete, Konsi und Resttafeln sind ausgenommen.</div></div>
-      <div id="matShelfRow"><label>Regal / Lagerplatz</label><select id="matShelf">${shelfOptions(data.shelf)}</select></div><div id="matKonsiLocationRow" class="notice hidden"><strong>Konsi-Lager:</strong> Standort Garage. Es gibt dort keine Regale.</div>
+    <div class="modal-titlebar material-input-titlebar">
+      <div>
+        <span class="modal-kicker">Material-Eingabe</span>
+        <h2>${isEdit ? 'Material bearbeiten' : 'Material anlegen'}</h2>
+        <p>${isEdit ? 'Daten sauber korrigieren, Bestand bleibt kontrolliert.' : 'Neues Material geordnet anlegen.'}</p>
+      </div>
+      <span class="modal-version-pill">v0.9.5</span>
+    </div>
+    <div class="modal-subtitle-card"><strong>Hinweis:</strong> Stärke und Sonderformat werden automatisch einheitlich gespeichert, z. B. <b>2,50 mm</b> und <b>1000x1000</b>.</div>
+    <form id="materialForm" class="form-grid material-input-form">
+      <div class="form-panel form-full"><label>Material</label><input id="matName" value="${escapeHtml(data.name)}" required placeholder="z. B. Aluminium"></div>
+      <div class="form-panel"><label>Stärke</label><input id="matThickness" value="${escapeHtml(data.thickness)}" placeholder="z. B. 2 oder 2,5" inputmode="decimal"><div id="matThicknessPreview" class="thickness-preview"></div></div>
+      <div class="form-panel"><label>Format</label><select id="matFormat">${formatOptions(data.format, true)}</select><div class="format-hint">Standardformat oder Sonderformat auswählen.</div></div>
+      <div id="matCustomFormatRow" class="form-panel ${isStandardFormatValue(data.format) || !data.format ? 'hidden' : ''}"><label>Sonderformat</label><input id="matCustomFormat" value="${isStandardFormatValue(data.format) ? '' : escapeHtml(formatDisplayValue(data.format || ''))}" placeholder="z. B. 1000 x 1000" inputmode="numeric"><div id="matCustomFormatPreview" class="thickness-preview"></div></div>
+      <div class="form-panel"><label>Teilenr.</label><input id="matArticleNumber" value="${escapeHtml(data.articleNumber || '')}" placeholder="z. B. T-12345"></div>
+      <div class="form-panel"><label>Lagerbereich</label><select id="matStorage"><option value="HAUPTLAGER" ${data.storage !== 'KONSI' ? 'selected' : ''}>Hauptlager</option><option value="KONSI" ${data.storage === 'KONSI' ? 'selected' : ''}>Konsi-Lager</option></select></div>
+      <div class="form-panel"><label id="matStockLabel">Menge</label><input id="matStock" type="number" min="0" step="1" value="${mainStockValue}"></div>
+      <div id="matPackageNumbersRow" class="form-panel form-full"><label>Konsi-Paketnummern</label><textarea id="matPackageNumbers" placeholder="Eine Nummer pro Zeile oder mit Komma getrennt ...">${escapeHtml((data.packageNumbers || []).join('\n'))}</textarea><div class="format-hint">Diese Nummern werden bei der Paket-Entnahme als Auswahl angezeigt. Wenn Nummern eingetragen sind, wird die Paketmenge automatisch daraus berechnet.</div></div>
+      <div class="form-panel"><label>Mindestbestand</label><input id="matMinStock" type="number" min="0" step="1" value="${materialMinStock(data)}" readonly><div class="format-hint">Fester Wert: 2 Tafeln. Pakete, Konsi und Resttafeln sind ausgenommen.</div></div>
+      <div id="matShelfRow" class="form-panel"><label>Regal / Lagerplatz</label><select id="matShelf">${shelfOptions(data.shelf)}</select></div><div id="matKonsiLocationRow" class="notice hidden"><strong>Konsi-Lager:</strong> Standort Garage. Es gibt dort keine Regale.</div>
       <div class="form-full checkline"><input id="matRest" type="checkbox" ${data.rest ? 'checked' : ''}><label for="matRest">Ist Resttafel / Restmaterial</label></div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">${isEdit ? 'Speichern' : 'Anlegen'}</button></div>
     </form>
@@ -2382,7 +2502,8 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
     $('#matKonsiLocationRow').classList.toggle('hidden', !konsi);
   };
   $('#matStorage').addEventListener('change', updateMaterialFormLabels);
-  $('#matThickness').addEventListener('blur', () => { $('#matThickness').value = normalizeThicknessInput($('#matThickness').value); });
+  attachThicknessAutoFormat('#matThickness', '#matThicknessPreview');
+  attachFormatControls('#matFormat', '#matCustomFormatRow', '#matCustomFormat', '#matCustomFormatPreview');
   const syncPackageCount = () => {
     if ($('#matStorage').value !== 'KONSI') return;
     const numbers = parsePackageNumbers($('#matPackageNumbers').value);
@@ -2401,7 +2522,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
       category: isKonsiForm ? 'Konsi-Lager' : '',
       type: $('#matRest').checked ? 'Resttafel' : 'Tafel',
       thickness: normalizeThicknessInput($('#matThickness').value),
-      format: $('#matFormat').value,
+      format: readFormatControls('#matFormat', '#matCustomFormat'),
       unit: isKonsiForm ? 'Pakete' : 'Tafeln',
       stock: isKonsiForm && parsePackageNumbers($('#matPackageNumbers').value).length ? parsePackageNumbers($('#matPackageNumbers').value).length : ((Number(data.packageStock) || 0) + Number($('#matStock').value)),
       packageStock: isKonsiForm ? 0 : (Number(data.packageStock) || 0),
@@ -2412,7 +2533,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
       shelf: isKonsiForm ? konsiLocation() : $('#matShelf').value,
       compartment: '',
       supplier: '',
-      articleNumber: '',
+      articleNumber: $('#matArticleNumber').value,
       rest: $('#matRest').checked,
       note: ''
     };
@@ -2732,6 +2853,62 @@ window.importMaterialsFromTable = async () => {
 };
 
 
+window.deleteNonOrderMaterial = async (materialId) => {
+  if (!state.permissions.canDeleteNonOrderMaterial) return showToast('Keine Berechtigung', 'Nur Laser und Admin dürfen einzelne Materialien mit Bestand 0 löschen.');
+  const m = state.materials.find(x => x.id === materialId);
+  if (!m) return;
+  const blockReason = materialDeleteBlockReasonClient(m);
+  if (blockReason) return showToast('Nicht löschbar', blockReason);
+  const title = materialTitle(m);
+  openModal(`
+    <div class="modal-titlebar delete-modal-titlebar">
+      <div>
+        <span class="modal-kicker">Material löschen</span>
+        <h2>Eintrag entfernen</h2>
+        <p>Nur möglich bei Bestand 0 und ohne offene Bestellung.</p>
+      </div>
+      <span class="modal-version-pill">v0.9.5</span>
+    </div>
+    <div class="modal-subtitle-card delete-warning-card">
+      <strong>${escapeHtml(title)}</strong><br>
+      <span>Dieser Eintrag wird aus der aktiven Materialliste entfernt. Die Historie bleibt nachvollziehbar und der Admin sieht den Vorgang im Archiv.</span>
+    </div>
+    <div class="delete-summary-grid">
+      <div class="delete-fact"><small>Bestand</small><strong>${escapeHtml(quantityLabel(m))}</strong></div>
+      <div class="delete-fact"><small>Lagerplatz</small><strong>${escapeHtml(materialLocationLabel(m))}</strong></div>
+      <div class="delete-fact"><small>Format</small><strong>${escapeHtml(formatDisplayValue(m.format || '-'))}</strong></div>
+      <div class="delete-fact"><small>Stärke</small><strong>${escapeHtml(m.thickness || '-')}</strong></div>
+    </div>
+    <form id="deleteMaterialForm" class="delete-material-form form-grid">
+      <div class="form-panel form-full">
+        <label>Grund / Hinweis</label>
+        <textarea id="deleteMaterialNote" placeholder="z. B. Bestand 0 / falsches Format / nicht mehr benötigt">Bestand 0 / nicht mehr benötigt</textarea>
+        <div class="format-hint">Der Hinweis wird in der Historie gespeichert.</div>
+      </div>
+      <label class="delete-confirm-line form-full">
+        <input id="deleteMaterialConfirm" type="checkbox" required>
+        <span>Ich bestätige, dass dieser Materialeintrag mit Bestand 0 aus der aktiven Liste entfernt werden soll.</span>
+      </label>
+      <div class="modal-footer form-full">
+        <button type="button" class="ghost" onclick="closeModal()">Abbrechen</button>
+        <button class="danger" type="submit">Material löschen</button>
+      </div>
+    </form>
+  `);
+  $('#deleteMaterialForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!$('#deleteMaterialConfirm').checked) return showToast('Bestätigung fehlt', 'Bitte die Löschung bestätigen.');
+    const note = $('#deleteMaterialNote').value;
+    try {
+      await api(`/api/materials/${materialId}/delete-non-order`, { method: 'POST', body: JSON.stringify({ note }) });
+      closeModal();
+      showToast('Material gelöscht', title);
+      await loadState(true);
+      if (currentPage === 'adminMaterials') renderCurrentPage();
+    } catch (error) { showToast('Fehler', error.message); }
+  });
+};
+
 window.archiveMaterial = async (materialId) => {
   const m = state.materials.find(x => x.id === materialId);
   if (!m) return;
@@ -2989,7 +3166,7 @@ window.openDirectIncomingModal = () => {
   if (!state.permissions.canReceiveDelivery) return showToast('Keine Berechtigung', 'Wareneingang darf diese Rolle nicht buchen.');
   const materialOptions = (state.materials || [])
     .filter(m => !m.archived && !m.rest && !isKonsi(m))
-    .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(materialTitle(m))} · ${escapeHtml(m.format || '-')} · ${escapeHtml(materialLocationLabel(m))}</option>`)
+    .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(materialTitle(m))} · ${escapeHtml(formatDisplayValue(m.format || '-'))} · ${escapeHtml(materialLocationLabel(m))}</option>`)
     .join('');
   openModal(`
     <h2>Wareneingang ohne Bestellung</h2>
@@ -3023,7 +3200,7 @@ window.openDirectIncomingModal = () => {
     if (material) {
       $('#directIncomingName').value = material.name || '';
       $('#directIncomingThickness').value = material.thickness || '';
-      $('#directIncomingFormat').value = normalizeFormatValue(material.format || '3000x1500');
+      setFormatSelectValue('#directIncomingFormat', material.format || '3000x1500');
     }
     updateDirectIncomingCalculation();
   };
