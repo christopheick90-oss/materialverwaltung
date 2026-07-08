@@ -1,21 +1,23 @@
-# Teständerungen 0.9.5
+# Teständerungen 0.9.6
 
-Basis: v0.9.4 im Master-Design, weitergeführt als v0.9.5.
+Basis: v0.9.5 im Master-Design, weitergeführt als v0.9.6.
 
-## Neu in v0.9.5
+## Neu in v0.9.6
 
-- Sonderformat bei **Material anlegen** ergänzt.
-- Sonderformat bei **Admin-Korrektur** ergänzt.
-- Freie Formate werden normalisiert: `1000 x 1000` → `1000x1000`.
-- Feld **Teilenr.** bei Material anlegen ergänzt.
-- Feld **Teilenr.** bei Admin-Korrektur ergänzt.
-- Teilenr. wird in Materialkarten und in der Admin-Materialpflege sichtbar angezeigt.
-- Teilenr. ist in der Suche enthalten.
-- Server akzeptiert freie Formate und setzt sie nicht mehr automatisch auf `3000x1500` zurück.
+- Materialnamen werden automatisch in eine saubere Schreibweise gebracht.
+- Beispiele:
+  - `almg3` wird `AlMg3`
+  - `almg 3` wird `AlMg3`
+  - `v2a` wird `V2A`
+  - `dc01` wird `DC01`
+  - `s235` wird `S235`
+  - `aluminium` wird `Aluminium`
+- Teilenr. wird automatisch großgeschrieben.
+- Die Korrektur wird beim Verlassen des Feldes und beim Speichern angewendet.
+- Server prüft die Schreibweise zusätzlich, damit Daten auch bei Import oder späterer Bearbeitung einheitlich bleiben.
 
-## Nicht geändert
+## Unverändert aus v0.9.5
 
-- Master-Design bleibt erhalten.
-- Mobile-Testversion bleibt verworfen.
-- Bestehende Stärken-Normierung bleibt erhalten.
-- Löschen bei Bestand 0 bleibt erhalten.
+- Sonderformate wie `1000 x 1000` werden als `1000x1000` gespeichert.
+- Feld Teilenr. ist bei Materialanlage, Korrektur, Materialkarte, Suche und Admin-Materialpflege enthalten.
+- Master-Design bleibt Grundlage.

@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.9.5';
+const CLIENT_VERSION = '0.9.6';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -132,6 +132,62 @@ function normalizeThicknessInput(value) {
     }
   }
   return text;
+}
+
+
+function smartTitleWord(word) {
+  const text = String(word || '');
+  if (!text) return '';
+  if (/^[A-ZÄÖÜ0-9._+-]+$/.test(text) && /[A-ZÄÖÜ]/.test(text)) return text;
+  return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+}
+
+function normalizeMaterialCaseInput(value) {
+  const raw = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!raw) return '';
+  let text = raw;
+  const knownWords = { aluminium: 'Aluminium', alu: 'Alu', edelstahl: 'Edelstahl', stahl: 'Stahl', kupfer: 'Kupfer', messing: 'Messing', verzinkt: 'Verzinkt', schwarz: 'Schwarz', blank: 'Blank', rest: 'Rest' };
+  text = text.split(' ').map(part => {
+    const key = part.toLowerCase();
+    return knownWords[key] || part;
+  }).join(' ');
+  text = text.replace(/\bal\s*mg\s*(\d+)\b/gi, 'AlMg$1');
+  text = text.replace(/\balmg\s*(\d+)\b/gi, 'AlMg$1');
+  text = text.replace(/\bal\s*mg\s*si\s*(\d+)\b/gi, 'AlMgSi$1');
+  text = text.replace(/\balmgsi\s*(\d+)\b/gi, 'AlMgSi$1');
+  text = text.replace(/\bv\s*([24])\s*a\b/gi, 'V$1A');
+  text = text.replace(/\bdc\s*(\d{2})\b/gi, 'DC$1');
+  text = text.replace(/\bdd\s*(\d{2})\b/gi, 'DD$1');
+  text = text.replace(/\bdx\s*(\d{2})\s*d\b/gi, 'DX$1D');
+  text = text.replace(/\bs\s*(\d{3})\b/gi, 'S$1');
+  text = text.replace(/\bc\s*(\d{2})\b/gi, 'C$1');
+  text = text.replace(/\b(\d\.\d{4})\b/g, '$1');
+  return text.split(' ').map(part => {
+    if (/^(AlMg\d+|AlMgSi\d+|V[24]A|DC\d{2}|DD\d{2}|DX\d{2}D|S\d{3}|C\d{2}|\d\.\d{4})$/i.test(part)) {
+      return part
+        .replace(/^almg(\d+)$/i, 'AlMg$1')
+        .replace(/^almgsi(\d+)$/i, 'AlMgSi$1')
+        .replace(/^v([24])a$/i, 'V$1A')
+        .replace(/^dc(\d{2})$/i, 'DC$1')
+        .replace(/^dd(\d{2})$/i, 'DD$1')
+        .replace(/^dx(\d{2})d$/i, 'DX$1D')
+        .replace(/^s(\d{3})$/i, 'S$1')
+        .replace(/^c(\d{2})$/i, 'C$1');
+    }
+    return part.split(/([\-/+])/).map(segment => /[\-/+]/.test(segment) ? segment : smartTitleWord(segment)).join('');
+  }).join(' ');
+}
+
+function normalizeArticleNumberInput(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+function attachAutoCase(inputSelector, normalizer) {
+  const input = $(inputSelector);
+  if (!input || typeof normalizer !== 'function') return;
+  input.addEventListener('blur', () => {
+    input.value = normalizer(input.value);
+  });
 }
 
 function attachThicknessAutoFormat(inputSelector, previewSelector = '') {
@@ -2394,9 +2450,9 @@ window.openAdminMaterialEditModal = (materialId) => {
         <h2>Materialdaten korrigieren</h2>
         <p>Bestand bleibt unverändert. Nur Stammdaten werden korrigiert.</p>
       </div>
-      <span class="modal-version-pill">v0.9.5</span>
+      <span class="modal-version-pill">v0.9.6</span>
     </div>
-    <div class="modal-subtitle-card"><strong>${escapeHtml(materialTitle(data))}</strong><br>${stockText}<br><span>Stärke und Sonderformat werden automatisch vereinheitlicht, z. B. <b>2,50 mm</b> und <b>1000x1000</b>.</span></div>
+    <div class="modal-subtitle-card"><strong>${escapeHtml(materialTitle(data))}</strong><br>${stockText}<br><span>Stärke, Sonderformat und Schreibweise werden automatisch vereinheitlicht, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</span></div>
     <form id="adminMaterialEditForm" class="form-grid material-input-form">
       <div class="form-panel form-full"><label>Material</label><input id="adminEditMatName" value="${escapeHtml(data.name || '')}" required placeholder="z. B. Aluminium"></div>
       <div class="form-panel"><label>Stärke</label><input id="adminEditMatThickness" value="${escapeHtml(data.thickness || '')}" placeholder="z. B. 2 oder 2,5" inputmode="decimal"><div id="adminEditMatThicknessPreview" class="thickness-preview"></div></div>
@@ -2417,6 +2473,8 @@ window.openAdminMaterialEditModal = (materialId) => {
     $('#adminEditMatKonsiInfo').classList.toggle('hidden', !isKonsiForm);
   };
   $('#adminEditMatStorage').addEventListener('change', updateAdminEditStorage);
+  attachAutoCase('#adminEditMatName', normalizeMaterialCaseInput);
+  attachAutoCase('#adminEditMatArticleNumber', normalizeArticleNumberInput);
   attachThicknessAutoFormat('#adminEditMatThickness', '#adminEditMatThicknessPreview');
   attachFormatControls('#adminEditMatFormat', '#adminEditMatCustomFormatRow', '#adminEditMatCustomFormat', '#adminEditMatCustomFormatPreview');
   updateAdminEditStorage();
@@ -2430,7 +2488,7 @@ window.openAdminMaterialEditModal = (materialId) => {
     const nextSheetStock = isKonsiForm ? 0 : existingSheetStock;
     const nextStock = isKonsiForm ? (existingPackageNumbers.length || Number(data.stock) || 0) : (nextPackageStock + nextSheetStock);
     const payload = {
-      name: $('#adminEditMatName').value,
+      name: normalizeMaterialCaseInput($('#adminEditMatName').value),
       category: isKonsiForm ? 'Konsi-Lager' : (data.category || ''),
       type: $('#adminEditMatRest').checked ? 'Resttafel' : (data.type || 'Tafel'),
       thickness: normalizeThicknessInput($('#adminEditMatThickness').value),
@@ -2445,7 +2503,7 @@ window.openAdminMaterialEditModal = (materialId) => {
       shelf: isKonsiForm ? konsiLocation() : $('#adminEditMatShelf').value,
       compartment: data.compartment || '',
       supplier: data.supplier || '',
-      articleNumber: $('#adminEditMatArticleNumber').value,
+      articleNumber: normalizeArticleNumberInput($('#adminEditMatArticleNumber').value),
       rest: $('#adminEditMatRest').checked,
       note: data.note || '',
       correctionNote: $('#adminEditCorrectionNote').value
@@ -2476,9 +2534,9 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
         <h2>${isEdit ? 'Material bearbeiten' : 'Material anlegen'}</h2>
         <p>${isEdit ? 'Daten sauber korrigieren, Bestand bleibt kontrolliert.' : 'Neues Material geordnet anlegen.'}</p>
       </div>
-      <span class="modal-version-pill">v0.9.5</span>
+      <span class="modal-version-pill">v0.9.6</span>
     </div>
-    <div class="modal-subtitle-card"><strong>Hinweis:</strong> Stärke und Sonderformat werden automatisch einheitlich gespeichert, z. B. <b>2,50 mm</b> und <b>1000x1000</b>.</div>
+    <div class="modal-subtitle-card"><strong>Hinweis:</strong> Stärke, Sonderformat und Schreibweise werden automatisch einheitlich gespeichert, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</div>
     <form id="materialForm" class="form-grid material-input-form">
       <div class="form-panel form-full"><label>Material</label><input id="matName" value="${escapeHtml(data.name)}" required placeholder="z. B. Aluminium"></div>
       <div class="form-panel"><label>Stärke</label><input id="matThickness" value="${escapeHtml(data.thickness)}" placeholder="z. B. 2 oder 2,5" inputmode="decimal"><div id="matThicknessPreview" class="thickness-preview"></div></div>
@@ -2502,6 +2560,8 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
     $('#matKonsiLocationRow').classList.toggle('hidden', !konsi);
   };
   $('#matStorage').addEventListener('change', updateMaterialFormLabels);
+  attachAutoCase('#matName', normalizeMaterialCaseInput);
+  attachAutoCase('#matArticleNumber', normalizeArticleNumberInput);
   attachThicknessAutoFormat('#matThickness', '#matThicknessPreview');
   attachFormatControls('#matFormat', '#matCustomFormatRow', '#matCustomFormat', '#matCustomFormatPreview');
   const syncPackageCount = () => {
@@ -2518,7 +2578,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
     event.preventDefault();
     const isKonsiForm = $('#matStorage').value === 'KONSI';
     const payload = {
-      name: $('#matName').value,
+      name: normalizeMaterialCaseInput($('#matName').value),
       category: isKonsiForm ? 'Konsi-Lager' : '',
       type: $('#matRest').checked ? 'Resttafel' : 'Tafel',
       thickness: normalizeThicknessInput($('#matThickness').value),
@@ -2533,7 +2593,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
       shelf: isKonsiForm ? konsiLocation() : $('#matShelf').value,
       compartment: '',
       supplier: '',
-      articleNumber: $('#matArticleNumber').value,
+      articleNumber: normalizeArticleNumberInput($('#matArticleNumber').value),
       rest: $('#matRest').checked,
       note: ''
     };
@@ -2867,7 +2927,7 @@ window.deleteNonOrderMaterial = async (materialId) => {
         <h2>Eintrag entfernen</h2>
         <p>Nur möglich bei Bestand 0 und ohne offene Bestellung.</p>
       </div>
-      <span class="modal-version-pill">v0.9.5</span>
+      <span class="modal-version-pill">v0.9.6</span>
     </div>
     <div class="modal-subtitle-card delete-warning-card">
       <strong>${escapeHtml(title)}</strong><br>

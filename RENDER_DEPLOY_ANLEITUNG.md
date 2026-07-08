@@ -1,3 +1,3 @@
-# Render Deploy Anleitung V0.9.5
+# Render Deploy Anleitung V0.9.6
 
-Wie bisher deployen. Wichtig: Nach dem Upload Render neu starten, damit `server.js`, `public/app.js` und `public/styles.css` neu geladen werden.
+Für Render wie bisher hochladen/deployen. Wichtig: Im Repository müssen `package.json`, `server.js` und der Ordner `public` direkt sichtbar sein.

@@ -1,4 +1,6 @@
-V0.9.5 Sonderformate und Teilenummern
+V0.9.6 Schreibweise-Normierung
 
-Start: 3_BROWSER_SERVER_TESTEN.bat
-Admin testen: admin / admin123
+Zum lokalen Testen:
+1. 0_NODEJS_PRUEFEN.bat
+2. 1_PAKETE_INSTALLIEREN.bat
+3. 3_BROWSER_SERVER_TESTEN.bat

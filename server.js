@@ -85,6 +85,53 @@ function cleanText(value, fallback = '') {
   return String(value ?? fallback).trim();
 }
 
+
+function smartTitleWord(value) {
+  const text = String(value || '');
+  if (!text) return '';
+  if (/^[A-ZÄÖÜ0-9._+-]+$/.test(text) && /[A-ZÄÖÜ]/.test(text)) return text;
+  return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+}
+
+function normalizeMaterialName(value) {
+  const raw = cleanText(value).replace(/\s+/g, ' ');
+  if (!raw) return '';
+  let text = raw;
+  const knownWords = { aluminium: 'Aluminium', alu: 'Alu', edelstahl: 'Edelstahl', stahl: 'Stahl', kupfer: 'Kupfer', messing: 'Messing', verzinkt: 'Verzinkt', schwarz: 'Schwarz', blank: 'Blank', rest: 'Rest' };
+  text = text.split(' ').map(part => {
+    const key = part.toLowerCase();
+    return knownWords[key] || part;
+  }).join(' ');
+  text = text.replace(/\bal\s*mg\s*(\d+)\b/gi, 'AlMg$1');
+  text = text.replace(/\balmg\s*(\d+)\b/gi, 'AlMg$1');
+  text = text.replace(/\bal\s*mg\s*si\s*(\d+)\b/gi, 'AlMgSi$1');
+  text = text.replace(/\balmgsi\s*(\d+)\b/gi, 'AlMgSi$1');
+  text = text.replace(/\bv\s*([24])\s*a\b/gi, 'V$1A');
+  text = text.replace(/\bdc\s*(\d{2})\b/gi, 'DC$1');
+  text = text.replace(/\bdd\s*(\d{2})\b/gi, 'DD$1');
+  text = text.replace(/\bdx\s*(\d{2})\s*d\b/gi, 'DX$1D');
+  text = text.replace(/\bs\s*(\d{3})\b/gi, 'S$1');
+  text = text.replace(/\bc\s*(\d{2})\b/gi, 'C$1');
+  return text.split(' ').map(part => {
+    if (/^(AlMg\d+|AlMgSi\d+|V[24]A|DC\d{2}|DD\d{2}|DX\d{2}D|S\d{3}|C\d{2}|\d\.\d{4})$/i.test(part)) {
+      return part
+        .replace(/^almg(\d+)$/i, 'AlMg$1')
+        .replace(/^almgsi(\d+)$/i, 'AlMgSi$1')
+        .replace(/^v([24])a$/i, 'V$1A')
+        .replace(/^dc(\d{2})$/i, 'DC$1')
+        .replace(/^dd(\d{2})$/i, 'DD$1')
+        .replace(/^dx(\d{2})d$/i, 'DX$1D')
+        .replace(/^s(\d{3})$/i, 'S$1')
+        .replace(/^c(\d{2})$/i, 'C$1');
+    }
+    return part.split(/([\-/+])/).map(segment => /[\-/+]/.test(segment) ? segment : smartTitleWord(segment)).join('');
+  }).join(' ');
+}
+
+function normalizeArticleNumber(value) {
+  return cleanText(value).replace(/\s+/g, ' ').toUpperCase();
+}
+
 function normalizeDeleteConfirmText(value) {
   return cleanText(value)
     .toUpperCase()
@@ -137,7 +184,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.9.5';
+const PROGRAM_VERSION = '0.9.6';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -666,7 +713,7 @@ function defaultDb() {
 
 function normalizeMaterial(raw, index = 0) {
   const created = raw.createdAt || nowIso();
-  const name = cleanText(raw.name, `Material ${index + 1}`) || `Material ${index + 1}`;
+  const name = normalizeMaterialName(cleanText(raw.name, `Material ${index + 1}`)) || `Material ${index + 1}`;
   const rest = Boolean(raw.rest) || String(raw.type || '').toLowerCase().includes('rest');
   const storage = normalizeStorage(raw.storage, raw.shelf);
   const packageNumbers = storage === 'KONSI' ? normalizePackageNumbers(raw.packageNumbers) : [];
@@ -697,7 +744,7 @@ function normalizeMaterial(raw, index = 0) {
     shelf,
     compartment: cleanText(raw.compartment, ''),
     supplier: cleanText(raw.supplier, ''),
-    articleNumber: cleanText(raw.articleNumber, ''),
+    articleNumber: normalizeArticleNumber(raw.articleNumber),
     rest,
     note: cleanText(raw.note, ''),
     deliveryPending: Boolean(raw.deliveryPending),
