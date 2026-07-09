@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Eckl Eco Technics - Materialverwaltung</title>
-  <link rel="stylesheet" href="/styles.css?v=1.2">
+  <link rel="stylesheet" href="/styles.css?v=2.0">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -14,14 +14,13 @@
       <p class="muted">Anmeldung nach Bereich. Danach wird die Oberfläche automatisch passend freigeschaltet.</p>
       <form id="loginForm" class="login-form">
         <label>Benutzer</label>
-        <input id="username" autocomplete="username" placeholder="admin / laser / buero / chef" required>
+        <input id="username" autocomplete="username" placeholder="laser / buero / chef" required>
         <label>Passwort</label>
-        <input id="password" type="password" autocomplete="current-password" placeholder="admin123 / laser123 / buero123 / chef123" required>
+        <input id="password" type="password" autocomplete="current-password" placeholder="laser123 / buero123 / chef123" required>
         <button class="primary full" type="submit">Anmelden</button>
       </form>
       <div class="notice small">
         <strong>Testzugänge:</strong><br>
-        Admin: <code>admin</code> / <code>admin123</code><br>
         Laser: <code>laser</code> / <code>laser123</code><br>
         Büro: <code>buero</code> / <code>buero123</code><br>
         Chef: <code>chef</code> / <code>chef123</code>
@@ -38,7 +37,7 @@
         <label>Angemeldet als</label>
         <div class="profile-name" id="profileName">-</div>
         <div id="roleBadge" class="role-badge">-</div>
-        <div id="appVersion" class="version-badge">Version 1.2</div>
+        <div id="appVersion" class="version-badge">Version 2.0</div>
         <div id="serverModeBadge" class="version-badge server-mode-badge">Server: -</div>
         <div class="connection"><span id="connectionDot" class="dot"></span><span id="connectionText">Verbinde...</span></div>
         <button class="ghost logout" id="logoutBtn">Abmelden</button>
@@ -81,6 +80,6 @@
   <div id="modal" class="modal-bg"><div class="modal" id="modalInner"></div></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=1.2"></script>
+  <script src="/app.js?v=2.0"></script>
 </body>
 </html>

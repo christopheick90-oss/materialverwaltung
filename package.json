@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "1.2.0",
-  "description": "Eckl Eco Technics Materialverwaltung V1.2 - Verräumen mit Carport und Bodenhaltung als Zwischenlager",
+  "version": "2.0.0",
+  "description": "Eckl Eco Technics Materialverwaltung V2.0 - Konsi mit AB und Lieferschein, Kundenblöcke hervorgehoben",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

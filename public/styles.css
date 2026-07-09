@@ -279,3 +279,25 @@ button.active-filter{background:#222!important;color:#fff!important;border-color
 .delete-confirm-line input{width:auto;margin-top:2px;flex:0 0 auto}
 .delete-material-form .modal-footer{background:#fff;position:sticky;bottom:0;border-top:1px solid #eee;padding-top:12px;z-index:2}
 @media(max-width:650px){.delete-summary-grid{grid-template-columns:1fr}.delete-confirm-line{font-size:13px}}
+
+/* --- v1.3 Einzel-AB je Bestellung --- */
+.order-confirmation{margin-top:8px;background:#f7f7f7;border:1px solid #ddd;border-left:5px solid var(--red);border-radius:12px;padding:8px 10px;display:grid;gap:5px;align-items:start}
+.order-confirmation .badge{width:max-content}.order-confirmation button{width:max-content}
+
+/* --- v1.5 Bestellungen nach Tagesgruppe + Tages-AB --- */
+.order-day-group{background:#fff;border:1px solid #ddd;border-left:6px solid var(--red);border-radius:16px;margin:0 0 18px;overflow:hidden;box-shadow:0 8px 20px rgba(0,0,0,.08)}
+.order-day-head{background:linear-gradient(180deg,#2f2f2f,#151515);color:#fff;border-bottom:4px solid var(--red);padding:14px 16px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.order-day-head h3{margin:0 0 4px;font-size:22px}.order-day-head .muted{color:#ddd}.order-day-head .ghost{background:#fff;color:#111;border-color:#fff}
+.order-day-confirmations{background:#f7f7f7;border-bottom:1px solid #ddd;padding:12px 14px;display:grid;gap:8px}.order-day-confirmations.empty-ab{display:block}.ab-list{display:flex;gap:8px;flex-wrap:wrap}.ab-item{background:#fff;border:1px solid #ddd;border-left:5px solid var(--red);border-radius:12px;padding:8px 10px;display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:8px}.ab-item .small{grid-column:1/-1}
+.order-day-group table{margin:0;border:0}.order-day-group th:first-child,.order-day-group td:first-child{padding-left:14px}.order-day-group th:last-child,.order-day-group td:last-child{padding-right:14px}
+@media(max-width:900px){.order-day-head{display:grid}.ab-item{grid-template-columns:1fr}.ab-item button{width:max-content}}
+
+/* V1.8: Kunden-Gruppierung in Bestellungen */
+.order-customer-group{background:#fff;border:1px solid #ddd;margin:14px 0;padding:0 14px 14px;box-shadow:0 6px 16px rgba(0,0,0,.06);border-radius:14px;overflow:hidden}
+.order-customer-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;background:linear-gradient(180deg,#3a3a3a,#1a1a1a);color:#fff;border-bottom:4px solid var(--red);padding:13px 15px;margin:0 -14px 12px}
+.order-customer-head h4{margin:0;font-size:21px}.order-customer-head .muted{color:#ddd}.order-customer-head .ghost{background:#fff;color:#111;border-color:#fff}
+@media(max-width:900px){.order-customer-head{display:block}.order-customer-head .row-actions{margin-top:10px}}
+
+.order-subgroup-title{margin:12px 0 8px;padding:9px 12px;border-left:5px solid var(--red);background:#f4f4f4;font-weight:900;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.order-subgroup-title.konsi{background:#fff7f7}
+.order-subgroup-title .row-actions{margin-left:auto}

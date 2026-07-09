@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '1.2';
+const CLIENT_VERSION = '2.0';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -16,7 +16,7 @@ let inventoryHistoryFilter = { text: '', date: '' };
 let withdrawalHistoryFilter = { text: '' };
 let lastTypingAt = 0;
 
-const roleNames = { LASER: 'Laser', BUERO: 'Büro', CHEF: 'Chef', ADMIN: 'Admin' };
+const roleNames = { LASER: 'Laser', BUERO: 'Büro', CHEF: 'Chef', ADMIN: 'System' };
 const statusNames = { ANGEFORDERT: 'Angefordert', FREIGEGEBEN: 'Freigegeben', BESTELLT: 'Bestellt', TEILGELIEFERT: 'Bestellt', ABGELEHNT: 'Abgelehnt', ERLEDIGT: 'Geliefert' };
 const storageNames = { HAUPTLAGER: 'Hauptlager', KONSI: 'Konsi-Lager' };
 const defaultShelves = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
@@ -30,10 +30,10 @@ const pages = [
   { id: 'dashboard', label: 'Dashboard', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'materials', label: 'Material', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'konsi', label: 'Konsi-Lager', roles: ['LASER','BUERO','CHEF','ADMIN'] },
-  { id: 'inventory', label: 'Inventur', roles: ['LASER','BUERO','CHEF'] },
+  { id: 'inventory', label: 'Inventur', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'orders', label: 'Bestellungen', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'history', label: 'Historie', roles: ['LASER','BUERO','CHEF','ADMIN'] },
-  { id: 'admin', label: 'Admin', roles: ['ADMIN'] },
+  { id: 'admin', label: 'Verwaltung', roles: ['ADMIN'] },
   { id: 'admin', label: 'Chef-Übersicht', roles: ['CHEF'] },
   { id: 'adminMaterials', label: 'Materialpflege', roles: ['ADMIN'], adminSubpage: true },
   { id: 'users', label: 'Benutzer & Rollen', roles: ['ADMIN'], adminSubpage: true },
@@ -74,6 +74,38 @@ function fmtDateOnly(dateOnly) {
   const parts = String(dateOnly).split('-').map(Number);
   if (parts.length !== 3 || parts.some(Number.isNaN)) return '-';
   return new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' }).format(new Date(parts[0], parts[1] - 1, parts[2]));
+}
+
+function formatKgPrice(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return `${n.toFixed(2).replace('.', ',')} €/kg`;
+}
+
+function formatMoney(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return `${n.toFixed(2).replace('.', ',')} €`;
+}
+
+function canSeePrices() {
+  return Boolean(state && state.permissions && state.permissions.canManagePrices);
+}
+
+function orderPriceLine(order) {
+  if (!canSeePrices()) return '';
+  const parts = [];
+  if (order.kgPrice !== undefined && order.kgPrice !== null && order.kgPrice !== '') parts.push(`KG-Preis: ${formatKgPrice(order.kgPrice)}`);
+  if (Number(order.totalWeightKg) > 0) parts.push(`Gewicht: ${String(Number(order.totalWeightKg).toFixed(1)).replace('.', ',')} kg`);
+  if (Number(order.totalPrice) > 0) parts.push(`Wert: ${formatMoney(order.totalPrice)}`);
+  return parts.length ? `<div class="small muted price-line">${parts.map(escapeHtml).join(' · ')}</div>` : '';
+}
+
+function materialPriceLine(material) {
+  if (!canSeePrices()) return '';
+  return material && material.kgPrice !== undefined && material.kgPrice !== null && material.kgPrice !== ''
+    ? `<div><span>KG-Preis</span><strong>${escapeHtml(formatKgPrice(material.kgPrice))}</strong></div>`
+    : `<div><span>KG-Preis</span><strong>-</strong></div>`;
 }
 
 function inventoryTimerText(schedule) {
@@ -775,7 +807,7 @@ function renderApp() {
   $('#loginScreen').classList.add('hidden');
   $('#app').classList.remove('hidden');
   $('#profileName').textContent = currentUser.name;
-  $('#roleBadge').textContent = roleNames[currentUser.role] || currentUser.role;
+  $('#roleBadge').textContent = currentUser.role === 'ADMIN' ? '' : (roleNames[currentUser.role] || currentUser.role);
   if ($('#appVersion')) $('#appVersion').textContent = `Version ${state.version || CLIENT_VERSION}`;
   if ($('#serverModeBadge')) {
     const mode = (state.systemStatus && state.systemStatus.serverMode) || state.serverMode || 'Test';
@@ -816,7 +848,7 @@ function renderCurrentPage() {
   if (!section) return;
   section.classList.add('active');
   const page = pages.find(p => p.id === currentPage && p.roles.includes(currentUser.role));
-  $('#pageTitle').textContent = page && page.adminSubpage ? `Admin · ${page.label}` : (page ? page.label : 'Dashboard');
+  $('#pageTitle').textContent = page && page.adminSubpage ? `Verwaltung · ${page.label}` : (page ? page.label : 'Dashboard');
   $('#pageSubtitle').textContent = subtitleForPage(currentPage);
   if (currentPage === 'dashboard') renderDashboard();
   if (currentPage === 'materials') renderMaterials();
@@ -824,14 +856,14 @@ function renderCurrentPage() {
   if (currentPage === 'inventory') renderInventory();
   if (currentPage === 'orders') renderOrders();
   if (currentPage === 'history') renderHistory();
-  if (currentPage === 'admin') renderAdmin();
-  if (currentPage === 'adminMaterials') renderAdminMaterials();
+  if (currentPage === 'admin') renderSystem();
+  if (currentPage === 'adminMaterials') renderSystemMaterials();
   if (currentPage === 'users') renderUsers();
-  if (currentPage === 'adminSettings') renderAdminSettings();
-  if (currentPage === 'adminBackup') renderAdminBackup();
-  if (currentPage === 'adminImportExport') renderAdminImportExport();
-  if (currentPage === 'adminArchive') renderAdminArchive();
-  if (currentPage === 'adminLog') renderAdminLog();
+  if (currentPage === 'adminSettings') renderSystemSettings();
+  if (currentPage === 'adminBackup') renderSystemBackup();
+  if (currentPage === 'adminImportExport') renderSystemImportExport();
+  if (currentPage === 'adminArchive') renderSystemArchive();
+  if (currentPage === 'adminLog') renderSystemLog();
   renderNav();
 }
 
@@ -844,7 +876,7 @@ function subtitleForPage(page) {
     inventory: 'Inventur starten, zählen, Differenzen prüfen und Bestände übernehmen',
     orders: 'Bestellung und Status-Rückmeldung',
     history: 'Letzte Aktivitäten aller Arbeitsplätze',
-    admin: currentUser.role === 'ADMIN' ? 'Admin-Übersicht ohne Bestellungen und Inventur' : 'Gesamtübersicht für Chef',
+    admin: currentUser.role === 'ADMIN' ? 'Verwaltung' : 'Gesamtübersicht für Chef',
     adminMaterials: 'Mehrere Materialien schnell hintereinander anlegen',
     users: 'Benutzer anlegen, Rollen vergeben und Zugänge deaktivieren',
     adminSettings: 'Regale, Standardwerte, Rechte und Systemstatus',
@@ -900,7 +932,7 @@ function adminMenuButton(item, activePage = '') {
   return `<button class="admin-tile ${isActive ? 'active' : ''}" onclick="goPage('${jsString(item.page)}')"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.text)}</span></button>`;
 }
 
-function renderAdminMenuOverview(activePage = '') {
+function renderSystemMenuOverview(activePage = '') {
   return `<div class="admin-menu-overview">
     ${adminMenuGroups.map(group => `<div class="card admin-menu-section">
       <div class="admin-section-title"><div><h2>${escapeHtml(group.title)}</h2><p>${escapeHtml(group.text)}</p></div></div>
@@ -909,11 +941,11 @@ function renderAdminMenuOverview(activePage = '') {
   </div>`;
 }
 
-function renderAdminSubnav(activePage) {
+function renderSystemSubnav(activePage) {
   return `<div class="card admin-subnav-card">
     <div class="admin-subnav-head">
-      <div><strong>Admin-Bereich</strong><span>Untermenüs sind hier gruppiert und nicht mehr einzeln in der linken Hauptnavigation.</span></div>
-      <button class="secondary mini" onclick="goPage('admin')">Zur Admin-Übersicht</button>
+      <div><strong>Verwaltung</strong><span>Untermenüs sind hier gruppiert und nicht mehr einzeln in der linken Hauptnavigation.</span></div>
+      <button class="secondary mini" onclick="goPage('admin')">Zur Übersicht</button>
     </div>
     <div class="admin-subnav-row">
       ${adminMenuGroups.flatMap(group => group.items).filter(item => item.page !== 'history' && item.page !== 'materials' && item.page !== 'orders' && item.page !== 'konsi').map(item => `<button class="ghost mini ${item.page === activePage ? 'active' : ''}" onclick="goPage('${jsString(item.page)}')">${escapeHtml(item.title)}</button>`).join('')}
@@ -922,7 +954,7 @@ function renderAdminSubnav(activePage) {
 }
 
 
-function renderAdminDashboard() {
+function renderSystemDashboard() {
   const users = state.users || [];
   const active = users.filter(u => u.active !== false).length;
   const inactive = users.length - active;
@@ -933,8 +965,8 @@ function renderAdminDashboard() {
     <div class="dashboard-compact">
       <div class="card admin-hero-card">
         <div>
-          <h2>Admin-Übersicht</h2>
-          <p>Alle Admin-Funktionen sind jetzt in Gruppen sortiert. Links bleibt nur noch der Hauptpunkt <strong>Admin</strong>, damit die Navigation übersichtlich bleibt.</p>
+          <h2>Verwaltung</h2>
+          <p>Alle Verwaltungsfunktionen sind in Gruppen sortiert. Links bleibt nur noch der Hauptpunkt <strong>Verwaltung</strong>, damit die Navigation übersichtlich bleibt.</p>
         </div>
         <div class="admin-hero-badges"><span class="badge gray">Gruppierte Menüs</span><span class="badge gray">Weniger Seitenleiste</span></div>
       </div>
@@ -945,7 +977,7 @@ function renderAdminDashboard() {
         <div class="stat"><span>Archiv</span><strong>${archived}</strong></div>
         <div class="stat"><span>Backups</span><strong>${(state.backups || []).length}</strong></div>
       </div>
-      ${renderAdminMenuOverview('admin')}
+      ${renderSystemMenuOverview('admin')}
       ${renderInventoryTimerCard(true)}
       <div class="split">
         <div class="card compact-activity-card"><h2>Systemstatus</h2>${renderSystemStatus(status)}</div>
@@ -956,12 +988,12 @@ function renderAdminDashboard() {
 }
 
 function roleOptions(selected = 'LASER') {
-  const roles = ['LASER','BUERO','CHEF','ADMIN'];
+  const roles = ['LASER','BUERO','CHEF'];
   return roles.map(role => `<option value="${role}" ${role === selected ? 'selected' : ''}>${escapeHtml(roleNames[role] || role)}</option>`).join('');
 }
 
 function renderDashboard() {
-  if (currentUser.role === 'ADMIN') return renderAdminDashboard();
+  if (currentUser.role === 'ADMIN') return renderSystemDashboard();
   const openOrders = state.orders.filter(o => ['ANGEFORDERT','BESTELLT','TEILGELIEFERT'].includes(o.status));
   const ordered = state.orders.filter(o => o.status === 'BESTELLT' || o.status === 'TEILGELIEFERT');
   const low = state.lowMaterials;
@@ -985,7 +1017,7 @@ function renderDashboard() {
         </div>
         <div class="card compact-warning-card">
           <h2>Mindestbestand</h2>
-          ${lowPreview.length ? `<div class="quick-list compact-warnings">${lowPreview.map(m => `<div class="quick-item warning-mini"><strong>${escapeHtml(materialTitle(m))}</strong><small>${quantityLabel(m)} · ${escapeHtml(materialLocationLabel(m))}</small>${state.permissions.canRequestOrder ? `<button class="ghost mini" onclick="openOrderModal('${jsString(m.id)}')">Bestellung</button>` : ''}</div>`).join('')}</div>${low.length > 5 ? `<div class="footer-note">${low.length - 5} weitere Warnung(en) in Material anzeigen.</div>` : ''}` : '<div class="empty">Keine kritischen Materialien.</div>'}
+          ${lowPreview.length ? `<div class="quick-list compact-warnings">${lowPreview.map(m => `<div class="quick-item warning-mini"><strong>${escapeHtml(materialTitle(m))}</strong><small>${quantityLabel(m)} · ${escapeHtml(materialLocationLabel(m))}</small>${state.permissions.canRequestOrder ? `<button class="ghost mini" onclick="openOrderModal('${jsString(m.id)}'${isKonsi(m) ? ",'KONSI_REQUEST'" : ''})">Bestellung</button>` : ''}</div>`).join('')}</div>${low.length > 5 ? `<div class="footer-note">${low.length - 5} weitere Warnung(en) in Material anzeigen.</div>` : ''}` : '<div class="empty">Keine kritischen Materialien.</div>'}
         </div>
       </div>
       <div class="card compact-activity-card">
@@ -1208,15 +1240,19 @@ function materialCardHtml(m) {
         <div><span>Format</span><strong>${escapeHtml(formatDisplayValue(m.format || '-'))}</strong></div>
         <div><span>Lagerplatz</span><strong>${escapeHtml(materialLocationLabel(m))}</strong></div>
         ${m.articleNumber ? `<div><span>Teilenr.</span><strong>${escapeHtml(m.articleNumber)}</strong></div>` : ''}
+        ${materialPriceLine(m)}
       </div>
       <div class="stock-fill"><span style="width:${fill}%"></span></div>
       <div class="actions">
         <button class="ghost mini" onclick="openStockModal('${jsString(m.id)}','REMOVE')">Entnahme</button>
         <button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button>
+        ${m.certificate ? `<button class="ghost mini" onclick="openMaterialCertificate('${jsString(m.id)}')">Werkszeugnis</button>` : ''}
+        <button class="ghost mini" onclick="uploadMaterialCertificate('${jsString(m.id)}')">${m.certificate ? 'Werkszeugnis ändern' : 'Werkszeugnis PDF'}</button>
+        ${canSeePrices() ? `<button class="ghost mini" onclick="openMaterialPriceModal('${jsString(m.id)}')">KG-Preis</button>` : ''}
         ${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}
         ${state.permissions.canAdjustStock && !isKonsi(m) ? `<button class="secondary mini" onclick="openStockModal('${jsString(m.id)}','SET')">Bestand buchen</button>` : ''}
-        ${!m.rest && state.permissions.canRequestOrder ? `<button class="primary mini" onclick="openOrderModal('${jsString(m.id)}')">Bestellung</button>` : (m.rest ? `<span class="badge gray">Resttafel</span>` : '')}
-        ${state.permissions.canCorrectMaterial ? `<button class="secondary mini" onclick="openAdminMaterialEditModal('${jsString(m.id)}')">Korrigieren</button>` : (state.permissions.canEditMaterial ? `<button class="ghost mini" onclick="openMaterialModal('${jsString(m.id)}')">Bearbeiten</button>` : '')}
+        ${!m.rest && state.permissions.canRequestOrder ? `<button class="primary mini" onclick="openOrderModal('${jsString(m.id)}'${isKonsi(m) ? ",'KONSI_REQUEST'" : ''})">Bestellung</button>` : (m.rest ? `<span class="badge gray">Resttafel</span>` : '')}
+        ${state.permissions.canCorrectMaterial ? `<button class="secondary mini" onclick="openSystemMaterialEditModal('${jsString(m.id)}')">Korrigieren</button>` : (state.permissions.canEditMaterial ? `<button class="ghost mini" onclick="openMaterialModal('${jsString(m.id)}')">Bearbeiten</button>` : '')}
         ${state.permissions.canDeleteNonOrderMaterial && materialCanDeleteWithoutOrderClient(m) ? `<button class="secondary danger mini" onclick="deleteNonOrderMaterial('${jsString(m.id)}')">Löschen</button>` : ''}
         ${state.permissions.canDeleteMaterial && !state.permissions.canDeleteNonOrderMaterial ? `<button class="secondary danger mini" onclick="archiveMaterial('${jsString(m.id)}')">Archivieren</button>` : ''}
       </div>
@@ -1277,7 +1313,7 @@ function renderKonsi() {
       ${canCreate ? '<button class="primary" onclick="openMaterialModal(\'\', \'KONSI\')">Konsi-Material anlegen</button>' : ''}
       ${canImportKonsiTable ? '<button class="secondary" onclick="openPasteTableModal()">Konsi-Tabelle einfügen</button>' : ''}
       <button class="secondary" onclick="loadState()">Aktualisieren</button>
-      <span class="badge gray">Konsi für alle sichtbar</span><span class="badge gray">Tabellenimport nur Admin</span><span class="badge red">Standort: Garage</span>
+      <span class="badge gray">Konsi für alle sichtbar</span><span class="badge gray">Tabellenimport</span><span class="badge red">Standort: Garage</span>
     </div>
     <div id="konsiGrid" class="material-grid"></div>
   `;
@@ -1560,13 +1596,14 @@ function renderInventorySession(session) {
 function renderMainInventoryTable(session) {
   return `
     <table class="inventory-table">
-      <thead><tr><th>Material</th><th>Größe</th><th>Soll</th><th>Gezählt</th><th>Differenz</th><th>Bemerkung</th></tr></thead>
+      <thead><tr><th>Material</th><th>Größe</th><th>Soll</th><th>Gezählt</th>${canSeePrices() ? '<th>KG-Preis</th>' : ''}<th>Differenz</th><th>Bemerkung</th></tr></thead>
       <tbody>${session.items.map(item => `
         <tr data-item-id="${escapeHtml(item.id)}">
           <td><strong>${escapeHtml(item.title || item.materialName)}</strong>${item.extraMaterial ? '<div><span class="badge green">Zusatzmaterial</span></div>' : ''}<div class="small muted">${escapeHtml(item.shelf || session.area)}</div></td>
           <td>${escapeHtml(item.format || '-')}</td>
           <td><strong>${Number(item.expectedPackages) || 0} Pakete</strong><br><strong>${Number(item.expectedSheets) || 0} Tafeln</strong></td>
           <td><div class="inventory-count-grid"><label>Pakete<input class="inv-packages" type="number" min="0" step="1" value="${item.countedPackages ?? ''}" placeholder="0"></label><label>Tafeln<input class="inv-sheets" type="number" min="0" step="1" value="${item.countedSheets ?? ''}" placeholder="0"></label></div></td>
+          ${canSeePrices() ? `<td><input class="inv-kg-price" type="number" min="0" step="0.01" value="${item.kgPrice ?? ''}" placeholder="€/kg"></td>` : ''}
           <td><span class="inventory-diff">${escapeHtml(inventoryDiffText(item, session.area))}</span></td>
           <td><input class="inv-note" value="${escapeHtml(item.note || '')}" placeholder="optional"></td>
         </tr>
@@ -1578,12 +1615,13 @@ function renderMainInventoryTable(session) {
 function renderKonsiInventoryTable(session) {
   return `
     <table class="inventory-table">
-      <thead><tr><th>Paketnummer</th><th>Material</th><th>Status</th><th>Bemerkung</th></tr></thead>
+      <thead><tr><th>Paketnummer</th><th>Material</th><th>Status</th>${canSeePrices() ? '<th>KG-Preis</th>' : ''}<th>Bemerkung</th></tr></thead>
       <tbody>${session.items.map(item => `
         <tr data-item-id="${escapeHtml(item.id)}">
           <td><strong>${escapeHtml(item.packageNumber || '-')}</strong></td>
           <td>${escapeHtml(item.title || item.materialName)}<div class="small muted">${escapeHtml(item.shelf || '-')}</div></td>
           <td><select class="inv-present"><option value="" ${item.present === null || item.present === undefined ? 'selected' : ''}>Noch offen</option><option value="true" ${item.present === true ? 'selected' : ''}>Vorhanden</option><option value="false" ${item.present === false ? 'selected' : ''}>Fehlt</option></select></td>
+          ${canSeePrices() ? `<td><input class="inv-kg-price" type="number" min="0" step="0.01" value="${item.kgPrice ?? ''}" placeholder="€/kg"></td>` : ''}
           <td><input class="inv-note" value="${escapeHtml(item.note || '')}" placeholder="optional"></td>
         </tr>
       `).join('')}</tbody>
@@ -1642,7 +1680,7 @@ window.cancelInventory = async (sessionId) => {
 function bindInventoryLive() {
   document.querySelectorAll('.inventory-session-card').forEach(card => {
     const sessionId = card.dataset.inventoryId;
-    card.querySelectorAll('.inv-packages, .inv-sheets, .inv-present').forEach(input => {
+    card.querySelectorAll('.inv-packages, .inv-sheets, .inv-present, .inv-kg-price').forEach(input => {
       input.addEventListener('input', () => updateInventoryCardLive(sessionId));
       input.addEventListener('change', () => updateInventoryCardLive(sessionId));
     });
@@ -1713,7 +1751,7 @@ function collectInventoryPayload(sessionId) {
     const id = row.dataset.itemId;
     if (session.area === 'KONSI') {
       const value = row.querySelector('.inv-present').value;
-      return { id, present: value === '' ? null : value === 'true', note: row.querySelector('.inv-note').value };
+      return { id, present: value === '' ? null : value === 'true', note: row.querySelector('.inv-note').value, kgPrice: canSeePrices() && row.querySelector('.inv-kg-price') ? row.querySelector('.inv-kg-price').value : '' };
     }
     const packagesValue = row.querySelector('.inv-packages').value.trim();
     const sheetsValue = row.querySelector('.inv-sheets').value.trim();
@@ -1724,6 +1762,7 @@ function collectInventoryPayload(sessionId) {
       id,
       countedPackages: isCounted ? (hasPackages ? packagesValue : 0) : null,
       countedSheets: isCounted ? (hasSheets ? sheetsValue : 0) : null,
+      kgPrice: canSeePrices() && row.querySelector('.inv-kg-price') ? row.querySelector('.inv-kg-price').value : '',
       note: row.querySelector('.inv-note').value
     };
   });
@@ -1768,6 +1807,7 @@ window.openInventoryExtraItemModal = (sessionId) => {
       <div><label>Lagerplatz</label><input value="${escapeHtml(session.area)}" disabled></div>
       <div><label>Gezählte Pakete</label><input id="extraInvPackages" type="number" min="0" step="1" value="0"></div>
       <div><label>Gezählte Tafeln</label><input id="extraInvSheets" type="number" min="0" step="1" value="0"></div>
+      ${canSeePrices() ? `<div><label>KG-Preis €/kg</label><input id="extraInvKgPrice" type="number" min="0" step="0.01" placeholder="z. B. 2,35"></div>` : ''}
       <label class="checkline form-full"><input id="extraInvRest" type="checkbox"> <span>Resttafel / Restmaterial</span></label>
       <div class="form-full"><label>Bemerkung</label><input id="extraInvNote" placeholder="optional"></div>
       <div class="notice form-full">Wichtig: Diese Position wird im Fortschritt mitgezählt. Beim Abschließen wird daraus automatisch eine Materialposition in ${escapeHtml(session.area)}.</div>
@@ -1784,6 +1824,7 @@ window.openInventoryExtraItemModal = (sessionId) => {
         format: $('#extraInvFormat').value,
         countedPackages: Number($('#extraInvPackages').value || 0),
         countedSheets: Number($('#extraInvSheets').value || 0),
+        kgPrice: canSeePrices() && $('#extraInvKgPrice') ? $('#extraInvKgPrice').value : '',
         rest: $('#extraInvRest').checked,
         note: $('#extraInvNote').value
       }) });
@@ -1855,14 +1896,127 @@ window.resetOrderFilters = () => {
   renderOrders();
 };
 
+function orderDayKey(order) {
+  const value = orderSortDate(order) || order.createdAt || order.lastUpdate || new Date().toISOString();
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : new Date().toISOString().slice(0, 10);
+}
+
+function orderDayLabel(dateKey) {
+  if (!dateKey) return '-';
+  const date = new Date(`${dateKey}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? dateKey : date.toLocaleDateString('de-DE');
+}
+
+
+function normalizeOrderCustomerName(value) {
+  const text = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 100);
+  return text || 'Ohne Kunde';
+}
+
+function normalizeOrderCustomerKey(value) {
+  const name = normalizeOrderCustomerName(value);
+  const normalized = name.normalize ? name.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : name;
+  return normalized
+    .toLowerCase()
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'ohne_kunde';
+}
+
+function orderCustomerName(order) {
+  return normalizeOrderCustomerName(order && (order.customerName || order.customer || order.kunde));
+}
+
+function orderCustomerKey(order) {
+  return normalizeOrderCustomerKey(order && (order.customerKey || order.customerName || order.customer || order.kunde));
+}
+
+
+function orderDayConfirmations(dateKey) {
+  const groups = state.orderDayConfirmations || {};
+  const list = groups[dateKey];
+  return Array.isArray(list) ? list : [];
+}
+
+function orderDayDeliveryNotes(dateKey) {
+  const groups = state.orderDayDeliveryNotes || {};
+  const list = groups[dateKey];
+  return Array.isArray(list) ? list : [];
+}
+
+function orderDayKonsiDocuments(dateKey) {
+  const groups = state.orderDayKonsiDocuments || {};
+  const list = groups[dateKey];
+  return Array.isArray(list) ? list : [];
+}
+
+
+function orderCustomerDocumentList(collectionName, dateKey, customerKey) {
+  const byDate = state[collectionName] || {};
+  const dayGroup = byDate[dateKey];
+  if (!dayGroup) return [];
+  if (Array.isArray(dayGroup)) return customerKey === 'ohne_kunde' ? dayGroup : [];
+  if (typeof dayGroup !== 'object') return [];
+  const list = dayGroup[customerKey];
+  return Array.isArray(list) ? list : [];
+}
+
+function orderCustomerConfirmations(dateKey, customerKey) {
+  return orderCustomerDocumentList('orderCustomerConfirmations', dateKey, customerKey);
+}
+
+function orderCustomerDeliveryNotes(dateKey, customerKey) {
+  return orderCustomerDocumentList('orderCustomerDeliveryNotes', dateKey, customerKey);
+}
+
+function orderCustomerKonsiConfirmations(dateKey, customerKey) {
+  return orderCustomerDocumentList('orderCustomerKonsiConfirmations', dateKey, customerKey);
+}
+
+function orderCustomerKonsiDeliveryNotes(dateKey, customerKey) {
+  return orderCustomerDocumentList('orderCustomerKonsiDeliveryNotes', dateKey, customerKey);
+}
+
+function orderCustomerKonsiDocuments(dateKey, customerKey) {
+  return orderCustomerDocumentList('orderCustomerKonsiDocuments', dateKey, customerKey);
+}
+
+function orderCustomerSearchText(dateKey, customerKey) {
+  const docs = [
+    ...orderCustomerConfirmations(dateKey, customerKey).map(item => [item.originalName, item.uploadedBy, item.uploadedAt ? fmtDate(item.uploadedAt) : '', 'Auftragsbestätigung', 'AB PDF'].join(' ')),
+    ...orderCustomerDeliveryNotes(dateKey, customerKey).map(item => [item.originalName, item.uploadedBy, item.uploadedAt ? fmtDate(item.uploadedAt) : '', 'Lieferschein', 'LS PDF'].join(' ')),
+    ...orderCustomerKonsiConfirmations(dateKey, customerKey).map(item => [item.originalName, item.uploadedBy, item.uploadedAt ? fmtDate(item.uploadedAt) : '', 'Konsi Auftragsbestätigung', 'Konsi AB PDF'].join(' ')),
+    ...orderCustomerKonsiDeliveryNotes(dateKey, customerKey).map(item => [item.originalName, item.uploadedBy, item.uploadedAt ? fmtDate(item.uploadedAt) : '', 'Konsi Lieferschein', 'Konsi LS PDF'].join(' '))
+  ];
+  return docs.join(' ');
+}
+
+function orderDaySearchText(dateKey) {
+  const docs = [
+    ...orderDayConfirmations(dateKey).map(item => [item.originalName, item.uploadedBy, item.uploadedAt ? fmtDate(item.uploadedAt) : '', 'Auftragsbestätigung', 'AB PDF'].join(' ')),
+    ...orderDayDeliveryNotes(dateKey).map(item => [item.originalName, item.uploadedBy, item.uploadedAt ? fmtDate(item.uploadedAt) : '', 'Lieferschein', 'LS PDF'].join(' ')),
+    ...orderDayKonsiDocuments(dateKey).map(item => [item.originalName, item.uploadedBy, item.uploadedAt ? fmtDate(item.uploadedAt) : '', 'Konsi', 'Konsi Dokument Alt'].join(' '))
+  ];
+  return docs.join(' ');
+}
+
 function orderSearchText(order) {
   return [
-    order.materialName, orderThicknessLabel(order), orderFormatLabel(order), order.note, order.requestedBy, order.requestedByRole,
-    order.deliveredToShelf, order.status, statusNames[order.status], order.manualOrder ? 'Handeingabe Bestellung selbst erfasst' : '', order.manualRequest ? 'Handeingabe freie Materialanfrage' : '', order.quantityUnit,
+    order.materialName, orderThicknessLabel(order), orderFormatLabel(order), orderCustomerName(order), order.note, order.requestedBy, order.requestedByRole,
+    order.deliveredToShelf, order.status, statusNames[order.status], order.manualOrder ? 'Handeingabe Bestellung selbst erfasst' : '', order.manualRequest ? 'Handeingabe freie Materialanfrage' : '', order.konsiOrder || order.storage === 'KONSI' ? 'Konsi separate Konsi-Bestellung' : '', order.quantityUnit,
     order.createdAt ? fmtDate(order.createdAt) : '',
     order.lastUpdate ? fmtDate(order.lastUpdate) : '',
     order.orderedAt ? fmtDate(order.orderedAt) : '',
     order.receivedAt ? fmtDate(order.receivedAt) : '',
+    order.confirmation && order.confirmation.originalName,
+    order.confirmation && order.confirmation.uploadedBy,
+    order.confirmation && order.confirmation.uploadedAt ? fmtDate(order.confirmation.uploadedAt) : '',
+    order.kgPrice !== undefined && order.kgPrice !== null ? formatKgPrice(order.kgPrice) : '',
     order.id
   ].join(' ').toLowerCase();
 }
@@ -1870,7 +2024,7 @@ function orderSearchText(order) {
 function filteredOrdersList(baseOrders) {
   const text = String(orderFilter.text || '');
   return baseOrders
-    .filter(o => searchMatches(orderSearchText(o), text))
+    .filter(o => searchMatches([orderSearchText(o), orderDaySearchText(orderDayKey(o)), orderCustomerSearchText(orderDayKey(o), orderCustomerKey(o))].join(' '), text))
     .filter(o => {
       if (orderFilter.status === 'all') return true;
       if (orderFilter.status === 'open') return ['ANGEFORDERT','BESTELLT','TEILGELIEFERT'].includes(o.status);
@@ -1880,7 +2034,112 @@ function filteredOrdersList(baseOrders) {
       if (orderFilter.status === 'rejected') return o.status === 'ABGELEHNT';
       return true;
     })
-    .sort((a, b) => new Date(b.lastUpdate || b.createdAt || 0) - new Date(a.lastUpdate || a.createdAt || 0));
+    .sort((a, b) => new Date(orderSortDate(b) || 0) - new Date(orderSortDate(a) || 0));
+}
+
+function orderSortDate(order) {
+  return order.orderedAt || order.createdAt || order.lastUpdate || '';
+}
+
+function orderDateLabel(order) {
+  const date = orderSortDate(order);
+  return date ? fmtDate(date) : '-';
+}
+
+function orderConfirmationLabel(order) {
+  return '';
+}
+
+function renderCustomerPdfList(dateKey, customerKey, title, emptyText, list, badgeText, openFn) {
+  if (!list.length) return '';
+  return `<div class="order-day-confirmations">
+    <strong>${escapeHtml(title)}</strong>
+    <div class="ab-list">
+      ${list.map(item => `<div class="ab-item"><span class="badge green">${escapeHtml(badgeText)}</span><button class="ghost mini" onclick="${openFn}('${jsString(dateKey)}','${jsString(customerKey)}','${jsString(item.id)}')">Öffnen</button><div class="small muted">${escapeHtml(item.originalName || 'Dokument.pdf')} · ${escapeHtml(item.uploadedBy || '-')} · ${fmtDate(item.uploadedAt)}</div></div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function renderOrderCustomerDocuments(dateKey, customerKey) {
+  return `
+    ${renderCustomerPdfList(dateKey, customerKey, 'Auftragsbestätigungen für diesen Kunden', '', orderCustomerConfirmations(dateKey, customerKey), 'AB PDF', 'openOrderCustomerConfirmation')}
+    ${renderCustomerPdfList(dateKey, customerKey, 'Lieferscheine für diesen Kunden', '', orderCustomerDeliveryNotes(dateKey, customerKey), 'LS PDF', 'openOrderCustomerDeliveryNote')}
+  `;
+}
+
+function renderOrderCustomerKonsiDocuments(dateKey, customerKey) {
+  return `
+    ${renderCustomerPdfList(dateKey, customerKey, 'Konsi-Auftragsbestätigungen für diesen Kunden', '', orderCustomerKonsiConfirmations(dateKey, customerKey), 'Konsi AB', 'openOrderCustomerKonsiConfirmation')}
+    ${renderCustomerPdfList(dateKey, customerKey, 'Konsi-Lieferscheine für diesen Kunden', '', orderCustomerKonsiDeliveryNotes(dateKey, customerKey), 'Konsi LS', 'openOrderCustomerKonsiDeliveryNote')}
+  `;
+}
+
+function renderOrderDayConfirmations(dateKey) {
+  return '';
+}
+
+function groupOrdersByDay(orders) {
+  const map = new Map();
+  (orders || []).forEach(order => {
+    const key = orderDayKey(order);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(order);
+  });
+  return Array.from(map.entries())
+    .map(([dateKey, items]) => ({
+      dateKey,
+      orders: items.sort((a, b) => new Date(orderSortDate(b) || 0) - new Date(orderSortDate(a) || 0))
+    }))
+    .sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+}
+
+function groupOrdersByCustomer(orders) {
+  const map = new Map();
+  (orders || []).forEach(order => {
+    const key = orderCustomerKey(order);
+    if (!map.has(key)) map.set(key, { customerKey: key, customerName: orderCustomerName(order), orders: [] });
+    map.get(key).orders.push(order);
+  });
+  return Array.from(map.values())
+    .map(group => ({ ...group, orders: group.orders.sort((a, b) => new Date(orderSortDate(b) || 0) - new Date(orderSortDate(a) || 0)) }))
+    .sort((a, b) => a.customerName.localeCompare(b.customerName, 'de'));
+}
+
+function renderOrdersGrouped(orders, withActions) {
+  const groups = groupOrdersByDay(orders);
+  return groups.map(group => {
+    const orderCount = group.orders.filter(o => !o.directIncoming).length;
+    const incomingCount = group.orders.filter(o => o.directIncoming).length;
+    const customers = groupOrdersByCustomer(group.orders);
+    const titleParts = [];
+    if (orderCount) titleParts.push(`${orderCount} Bestellung(en)`);
+    if (incomingCount) titleParts.push(`${incomingCount} Wareneingang`);
+    titleParts.push(`${customers.length} Kunde(n)`);
+    return `<div class="order-day-group">
+      <div class="order-day-head">
+        <div><h3>Bestellungen vom ${orderDayLabel(group.dateKey)}</h3><div class="small muted">${titleParts.join(' · ')} zusammengefasst</div></div>
+      </div>
+      ${customers.map(customer => {
+        const normalOrders = customer.orders.filter(o => o.storage !== 'KONSI');
+        const konsiOrders = customer.orders.filter(o => o.storage === 'KONSI');
+        const customerOrderCount = normalOrders.filter(o => !o.directIncoming).length;
+        const customerIncomingCount = normalOrders.filter(o => o.directIncoming).length;
+        const customerKonsiCount = konsiOrders.length;
+        const subtitle = [customerOrderCount ? `${customerOrderCount} Bestellung(en)` : '', customerIncomingCount ? `${customerIncomingCount} Wareneingang` : '', customerKonsiCount ? `${customerKonsiCount} Konsi` : ''].filter(Boolean).join(' · ') || `${customer.orders.length} Vorgang/Vorgänge`;
+        return `<div class="order-customer-group">
+          <div class="order-customer-head">
+            <div><h4>Kunde: ${escapeHtml(customer.customerName)}</h4><div class="small muted">${escapeHtml(subtitle)}</div></div>
+            <div class="row-actions">
+              ${customerOrderCount ? `<button class="ghost mini" onclick="uploadOrderCustomerConfirmation('${jsString(group.dateKey)}','${jsString(customer.customerKey)}')">AB PDF hochladen</button>` : ''}
+              ${(customerOrderCount || customerIncomingCount) ? `<button class="ghost mini" onclick="uploadOrderCustomerDeliveryNote('${jsString(group.dateKey)}','${jsString(customer.customerKey)}')">Lieferschein PDF hochladen</button>` : ''}
+            </div>
+          </div>
+          ${normalOrders.length ? `${renderOrderCustomerDocuments(group.dateKey, customer.customerKey)}<div class="order-subgroup-title"><strong>Bestellungen / Lieferungen</strong></div>${renderOrdersTable(normalOrders, withActions)}` : ''}
+          ${konsiOrders.length ? `<div class="order-subgroup-title konsi"><strong>Konsi separat</strong><span class="row-actions"><button class="ghost mini" onclick="uploadOrderCustomerKonsiConfirmation('${jsString(group.dateKey)}','${jsString(customer.customerKey)}')">Konsi AB hochladen</button><button class="ghost mini" onclick="uploadOrderCustomerKonsiDeliveryNote('${jsString(group.dateKey)}','${jsString(customer.customerKey)}')">Konsi Lieferschein hochladen</button></span></div>${renderOrderCustomerKonsiDocuments(group.dateKey, customer.customerKey)}${renderOrdersTable(konsiOrders, withActions)}` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
 }
 
 function orderFilterPanel(orders, filtered) {
@@ -1900,9 +2159,7 @@ function orderFilterPanel(orders, filtered) {
 }
 
 function currentOrderBaseList() {
-  return currentUser.role === 'LASER'
-    ? state.orders.filter(o => o.requestedByRole === 'LASER' || o.requestedBy === currentUser.name)
-    : state.orders;
+  return state.orders || [];
 }
 
 function drawOrdersList() {
@@ -1911,7 +2168,7 @@ function drawOrdersList() {
   const count = $('#orderFilterCount');
   if (count) count.textContent = `${filtered.length} von ${incoming.length} Vorgängen`;
   const box = $('#ordersResult');
-  if (box) box.innerHTML = filtered.length ? renderOrdersTable(filtered, true) : '<div class="empty">Keine Bestellung oder Lieferung gefunden.</div>';
+  if (box) box.innerHTML = filtered.length ? renderOrdersGrouped(filtered, true) : '<div class="empty">Keine Bestellung oder Lieferung gefunden.</div>';
 }
 
 function renderOrders() {
@@ -1925,8 +2182,8 @@ function renderOrders() {
     </div>
     ${orderFilterPanel(incoming, filtered)}
     <div class="card">
-      <h2>${currentUser.role === 'LASER' ? 'Bestellstatus vom Laser' : 'Bestellungen & Lieferungen suchen'}</h2>
-      <div id="ordersResult">${filtered.length ? renderOrdersTable(filtered, true) : '<div class="empty">Keine Bestellung oder Lieferung gefunden.</div>'}</div>
+      <h2>Bestellungen nach Tag und Kunde</h2>
+      <div id="ordersResult">${filtered.length ? renderOrdersGrouped(filtered, true) : '<div class="empty">Keine Bestellung oder Lieferung gefunden.</div>'}</div>
     </div>
   `;
   $('#orderSearch').addEventListener('input', (event) => {
@@ -1942,8 +2199,8 @@ function renderOrdersTable(orders, withActions) {
       <tbody>
         ${orders.map(o => `
           <tr>
-            <td>${o.directIncoming ? '<span class="badge green">Wareneingang</span>' : `${statusBadge(o.status)}${(o.manualOrder || o.manualRequest) ? '<br><span class="badge gray">Handeingabe</span>' : ''}`}</td>
-            <td><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}<div class="small muted">${o.directIncoming ? 'Erfasst von' : (o.manualOrder ? 'Bestellung erfasst von' : (o.manualRequest ? 'Per Handeingabe angefragt von' : 'Angefragt von'))} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}${o.manualOrder ? '<div class="small muted">Bestellung per Handeingabe</div>' : ''}${o.manualRequest ? '<div class="small muted">Freie Materialanfrage</div>' : ''}</td>
+            <td>${o.directIncoming ? '<span class="badge green">Wareneingang</span>' : `${statusBadge(o.status)}${o.storage === 'KONSI' ? '<br><span class="badge red">Konsi</span>' : ''}${(o.manualOrder || o.manualRequest) ? '<br><span class="badge gray">Handeingabe</span>' : ''}`}</td>
+            <td><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}<div class="small muted">Kunde: ${escapeHtml(orderCustomerName(o))}</div><div class="small muted">${o.directIncoming ? 'Erfasst von' : (o.manualOrder ? 'Bestellung erfasst von' : (o.manualRequest ? 'Per Handeingabe angefragt von' : 'Angefragt von'))} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}${o.manualOrder ? '<div class="small muted">Bestellung per Handeingabe</div>' : ''}${o.manualRequest ? '<div class="small muted">Freie Materialanfrage</div>' : ''}${orderConfirmationLabel(o)}${orderPriceLine(o)}</td>
             <td>${o.directIncoming ? `Wareneingang: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : `Anfrage: <strong>${orderQuantityLabel(o, 'request')}</strong>${o.orderedAmount ? `<br>Bestellt: <strong>${orderQuantityLabel(o, 'ordered')}</strong>` : ''}${(Number(o.receivedAmount)||Number(o.receivedSheets)) ? `<br>Geliefert: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : ''}`}</td>
             <td class="order-note">${escapeHtml(o.note || '-')}</td>
             <td>${orderFlow(o.status)}<div class="small muted">Letzte Änderung: ${fmtDate(o.lastUpdate)}</div>${o.status === 'ERLEDIGT' ? `<div class="small muted">Geliefert: ${fmtDate(o.receivedAt || o.lastUpdate)}</div>` : ''}</td>
@@ -1967,6 +2224,185 @@ function renderOrderActions(order) {
   if (state.permissions.canReceiveDelivery && (order.status === 'BESTELLT' || order.status === 'TEILGELIEFERT')) actions.push(`<button class="primary mini" onclick="openReceiveModal('${jsString(order.id)}')">Lieferung annehmen</button>`);
   return `<div class="row-actions">${actions.join('') || '<span class="small muted">Keine Aktion</span>'}</div>`;
 }
+
+
+window.openOrderCustomerConfirmation = (dateKey, customerKey, fileId) => {
+  if (!token) return showToast('Nicht angemeldet', 'Bitte neu anmelden.');
+  window.open(`/api/order-groups/${encodeURIComponent(dateKey)}/${encodeURIComponent(customerKey)}/confirmations/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`, '_blank');
+};
+
+window.openOrderCustomerDeliveryNote = (dateKey, customerKey, fileId) => {
+  if (!token) return showToast('Nicht angemeldet', 'Bitte neu anmelden.');
+  window.open(`/api/order-groups/${encodeURIComponent(dateKey)}/${encodeURIComponent(customerKey)}/delivery-notes/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`, '_blank');
+};
+
+window.openOrderCustomerKonsiConfirmation = (dateKey, customerKey, fileId) => {
+  if (!token) return showToast('Nicht angemeldet', 'Bitte neu anmelden.');
+  window.open(`/api/order-groups/${encodeURIComponent(dateKey)}/${encodeURIComponent(customerKey)}/konsi-confirmations/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`, '_blank');
+};
+
+window.openOrderCustomerKonsiDeliveryNote = (dateKey, customerKey, fileId) => {
+  if (!token) return showToast('Nicht angemeldet', 'Bitte neu anmelden.');
+  window.open(`/api/order-groups/${encodeURIComponent(dateKey)}/${encodeURIComponent(customerKey)}/konsi-delivery-notes/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`, '_blank');
+};
+
+window.openOrderCustomerKonsiDocument = (dateKey, customerKey, fileId) => {
+  if (!token) return showToast('Nicht angemeldet', 'Bitte neu anmelden.');
+  window.open(`/api/order-groups/${encodeURIComponent(dateKey)}/${encodeURIComponent(customerKey)}/konsi-documents/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`, '_blank');
+};
+
+function uploadOrderCustomerPdf(dateKey, customerKey, endpoint, successTitle, successText) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf,.pdf';
+  input.addEventListener('change', () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (file.type && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return showToast('Falsche Datei', 'Bitte eine PDF-Datei auswählen.');
+    if (file.size > 15 * 1024 * 1024) return showToast('PDF zu groß', 'Bitte maximal 15 MB hochladen.');
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await api(`/api/order-groups/${encodeURIComponent(dateKey)}/${encodeURIComponent(customerKey)}/${endpoint}`, { method: 'POST', body: JSON.stringify({ fileName: file.name, data: reader.result }) });
+        showToast(successTitle, successText);
+        await loadState();
+        currentPage = 'orders';
+        renderCurrentPage();
+      } catch (err) { showToast('Upload fehlgeschlagen', err.message || 'Die PDF konnte nicht gespeichert werden.'); }
+    };
+    reader.onerror = () => showToast('PDF konnte nicht gelesen werden', 'Bitte die Datei erneut auswählen.');
+    reader.readAsDataURL(file);
+  });
+  input.click();
+}
+
+window.uploadOrderCustomerConfirmation = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'confirmation', 'Auftragsbestätigung gespeichert', `Die PDF wurde für den Kunden am ${orderDayLabel(dateKey)} abgelegt.`);
+window.uploadOrderCustomerDeliveryNote = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'delivery-note', 'Lieferschein gespeichert', `Der Lieferschein wurde für den Kunden am ${orderDayLabel(dateKey)} abgelegt.`);
+window.uploadOrderCustomerKonsiConfirmation = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'konsi-confirmation', 'Konsi-Auftragsbestätigung gespeichert', `Die Konsi-AB wurde für den Kunden am ${orderDayLabel(dateKey)} abgelegt.`);
+window.uploadOrderCustomerKonsiDeliveryNote = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'konsi-delivery-note', 'Konsi-Lieferschein gespeichert', `Der Konsi-Lieferschein wurde für den Kunden am ${orderDayLabel(dateKey)} abgelegt.`);
+window.uploadOrderCustomerKonsiDocument = window.uploadOrderCustomerKonsiConfirmation;
+
+function uploadPdfFileToOrderCustomer(dateKey, customerKey, endpoint, file) {
+  if (!file) return Promise.resolve(false);
+  if (file.type && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return Promise.reject(new Error('Bitte eine PDF-Datei auswählen.'));
+  if (file.size > 15 * 1024 * 1024) return Promise.reject(new Error('PDF ist zu groß. Maximal 15 MB.'));
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await api(`/api/order-groups/${encodeURIComponent(dateKey)}/${encodeURIComponent(customerKey)}/${endpoint}`, { method: 'POST', body: JSON.stringify({ fileName: file.name, data: reader.result }) });
+        resolve(true);
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('PDF konnte nicht gelesen werden.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Alte Tagesfunktionen bleiben als Weiterleitung für bestehende Buttons/Tests erhalten.
+window.openOrderDayConfirmation = (dateKey, fileId) => window.openOrderCustomerConfirmation(dateKey, 'ohne_kunde', fileId);
+window.openOrderDayDeliveryNote = (dateKey, fileId) => window.openOrderCustomerDeliveryNote(dateKey, 'ohne_kunde', fileId);
+window.openOrderDayKonsiDocument = (dateKey, fileId) => window.openOrderCustomerKonsiConfirmation(dateKey, 'ohne_kunde', fileId);
+window.uploadOrderDayConfirmation = (dateKey) => window.uploadOrderCustomerConfirmation(dateKey, 'ohne_kunde');
+window.uploadOrderDayDeliveryNote = (dateKey) => window.uploadOrderCustomerDeliveryNote(dateKey, 'ohne_kunde');
+window.uploadOrderDayKonsiDocument = (dateKey) => window.uploadOrderCustomerKonsiConfirmation(dateKey, 'ohne_kunde');
+function uploadOrderDayPdf(dateKey, endpoint, successTitle, successText) { return uploadOrderCustomerPdf(dateKey, 'ohne_kunde', endpoint, successTitle, successText); }
+function uploadPdfFileToOrderDay(dateKey, endpoint, file) { return uploadPdfFileToOrderCustomer(dateKey, 'ohne_kunde', endpoint, file); }
+
+window.openOrderConfirmation = (orderId) => {
+  if (!token) return showToast('Nicht angemeldet', 'Bitte neu anmelden.');
+  window.open(`/api/orders/${encodeURIComponent(orderId)}/confirmation?token=${encodeURIComponent(token)}`, '_blank');
+};
+
+window.uploadOrderConfirmation = (orderId) => {
+  const order = (state.orders || []).find(o => o.id === orderId);
+  if (!order) return showToast('Bestellung fehlt', 'Die Bestellung wurde nicht gefunden.');
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf,.pdf';
+  input.addEventListener('change', () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (file.type && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return showToast('Falsche Datei', 'Bitte eine PDF-Datei auswählen.');
+    const maxBytes = 15 * 1024 * 1024;
+    if (file.size > maxBytes) return showToast('PDF zu groß', 'Bitte maximal 15 MB hochladen.');
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await api(`/api/orders/${encodeURIComponent(orderId)}/confirmation`, {
+          method: 'POST',
+          body: JSON.stringify({ fileName: file.name, data: reader.result })
+        });
+        showToast('Auftragsbestätigung gespeichert', 'Die PDF wurde bei der Bestellung abgelegt.');
+        await loadState();
+        currentPage = 'orders';
+        render();
+      } catch (err) {
+        showToast('Upload fehlgeschlagen', err.message || 'Die PDF konnte nicht gespeichert werden.');
+      }
+    };
+    reader.onerror = () => showToast('PDF konnte nicht gelesen werden', 'Bitte die Datei erneut auswählen.');
+    reader.readAsDataURL(file);
+  });
+  input.click();
+};
+
+
+window.openMaterialCertificate = (materialId) => {
+  if (!token) return showToast('Nicht angemeldet', 'Bitte neu anmelden.');
+  window.open(`/api/materials/${encodeURIComponent(materialId)}/certificate?token=${encodeURIComponent(token)}`, '_blank');
+};
+
+window.uploadMaterialCertificate = (materialId) => {
+  const material = (state.materials || []).find(m => m.id === materialId);
+  if (!material) return showToast('Material fehlt', 'Material wurde nicht gefunden.');
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf,.pdf';
+  input.addEventListener('change', () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (file.type && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return showToast('Falsche Datei', 'Bitte eine PDF-Datei auswählen.');
+    if (file.size > 15 * 1024 * 1024) return showToast('PDF zu groß', 'Bitte maximal 15 MB hochladen.');
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await api(`/api/materials/${encodeURIComponent(materialId)}/certificate`, { method: 'POST', body: JSON.stringify({ fileName: file.name, data: reader.result }) });
+        showToast('Werkszeugnis gespeichert', materialTitle(material));
+        await loadState(true);
+        renderCurrentPage();
+      } catch (err) { showToast('Upload fehlgeschlagen', err.message || 'Die PDF konnte nicht gespeichert werden.'); }
+    };
+    reader.onerror = () => showToast('PDF konnte nicht gelesen werden', 'Bitte die Datei erneut auswählen.');
+    reader.readAsDataURL(file);
+  });
+  input.click();
+};
+
+window.openMaterialPriceModal = (materialId) => {
+  if (!canSeePrices()) return showToast('Keine Berechtigung', 'KG-Preise sind nur für Büro und Chef sichtbar.');
+  const material = (state.materials || []).find(m => m.id === materialId);
+  if (!material) return showToast('Material fehlt', 'Material wurde nicht gefunden.');
+  openModal(`
+    <h2>KG-Preis bearbeiten</h2>
+    <p><strong>${escapeHtml(materialTitle(material))}</strong><br><span class="muted">Nur sichtbar für Büro und Chef.</span></p>
+    <form id="materialPriceForm" class="form-grid">
+      <div><label>KG-Preis €/kg</label><input id="materialKgPrice" type="number" min="0" step="0.01" value="${material.kgPrice ?? ''}" placeholder="z. B. 2,35"></div>
+      <div class="form-full"><div class="notice">Beim Liefergewicht wird daraus automatisch der Warenwert berechnet.</div></div>
+      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Speichern</button></div>
+    </form>
+  `);
+  $('#materialPriceForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    try {
+      await api(`/api/materials/${encodeURIComponent(materialId)}/price`, { method: 'POST', body: JSON.stringify({ kgPrice: $('#materialKgPrice').value }) });
+      closeModal();
+      showToast('KG-Preis gespeichert', materialTitle(material));
+      await loadState(true);
+      renderCurrentPage();
+    } catch (error) { showToast('Fehler', error.message); }
+  });
+};
 
 function renderHistory() {
   const withdrawals = withdrawalActivityList();
@@ -2089,7 +2525,7 @@ function adminMaterialEditTableHtml() {
             <td>${quantityLabel(m)}</td>
             <td>${escapeHtml(materialLocationLabel(m))}</td>
             <td>${materialStatusBadge(m)}</td>
-            <td><div class="row-actions"><button class="secondary mini" onclick="openAdminMaterialEditModal('${jsString(m.id)}')">Korrigieren</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button>${state.permissions.canDeleteNonOrderMaterial && materialCanDeleteWithoutOrderClient(m) ? `<button class="secondary danger mini" onclick="deleteNonOrderMaterial('${jsString(m.id)}')">Löschen</button>` : ''}</div></td>
+            <td><div class="row-actions"><button class="secondary mini" onclick="openSystemMaterialEditModal('${jsString(m.id)}')">Korrigieren</button><button class="ghost mini" onclick="openMaterialHistoryModal('${jsString(m.id)}')">Historie</button>${state.permissions.canDeleteNonOrderMaterial && materialCanDeleteWithoutOrderClient(m) ? `<button class="secondary danger mini" onclick="deleteNonOrderMaterial('${jsString(m.id)}')">Löschen</button>` : ''}</div></td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -2098,14 +2534,14 @@ function adminMaterialEditTableHtml() {
   `;
 }
 
-function renderAdminMaterialEditTable() {
+function renderSystemMaterialEditTable() {
   const target = $('#adminMaterialEditTable');
   if (target) target.innerHTML = adminMaterialEditTableHtml();
 }
 
-window.setAdminMaterialEditFilter = (value) => {
+window.setSystemMaterialEditFilter = (value) => {
   adminMaterialEditFilter = value;
-  renderAdminMaterialEditTable();
+  renderSystemMaterialEditTable();
 };
 
 function adminBulkMaterialRowHtml(index) {
@@ -2122,17 +2558,17 @@ function adminBulkMaterialRowHtml(index) {
   `;
 }
 
-function renderAdminMaterials() {
+function renderSystemMaterials() {
   const existingCount = (state.materials || []).length;
   const archivedCount = (state.archivedMaterials || []).length;
   const emptyCount = [...(state.materials || []), ...(state.archivedMaterials || [])].filter(isEmptyMaterialClient).length;
   $('#adminMaterials').innerHTML = `
-    ${renderAdminSubnav('adminMaterials')}
+    ${renderSystemSubnav('adminMaterials')}
     <div class="toolbar">
       <button class="primary" onclick="addBulkMaterialRows(5)">5 Zeilen hinzufügen</button>
       <button class="secondary" onclick="submitBulkMaterials()">Materialien anlegen</button>
       <button class="ghost" onclick="clearBulkMaterialRows()">Leeren</button>
-      <span class="badge gray">Nur Admin</span>
+      
     </div>
     <div class="card admin-material-card">
       <h2>Materialien mehrfach anlegen</h2>
@@ -2147,8 +2583,8 @@ function renderAdminMaterials() {
     </div>
     <div class="card admin-material-card admin-edit-card">
       <h2>Materialdaten bearbeiten</h2>
-      <p class="muted">Für Admin-Korrekturen, wenn Material, Stärke, Format oder Lagerplatz falsch angelegt wurde. Der Bestand bleibt dabei unverändert.</p>
-      <div class="admin-edit-search"><strong>Suche</strong><input id="adminMaterialEditSearch" value="${escapeHtml(adminMaterialEditFilter)}" placeholder="Material, Stärke, Format oder Regal suchen ..."><button class="ghost mini" onclick="adminMaterialEditFilter=''; renderAdminMaterials();">Leeren</button></div>
+      <p class="muted">Für Korrekturen, wenn Material, Stärke, Format oder Lagerplatz falsch angelegt wurde. Der Bestand bleibt dabei unverändert.</p>
+      <div class="admin-edit-search"><strong>Suche</strong><input id="adminMaterialEditSearch" value="${escapeHtml(adminMaterialEditFilter)}" placeholder="Material, Stärke, Format oder Regal suchen ..."><button class="ghost mini" onclick="adminMaterialEditFilter=''; renderSystemMaterials();">Leeren</button></div>
       <div id="adminMaterialEditTable">${adminMaterialEditTableHtml()}</div>
     </div>
     <div class="card danger-zone-card">
@@ -2159,14 +2595,14 @@ function renderAdminMaterials() {
         <div class="quick-item">Archivierte Materialien<small>${archivedCount}</small></div>
         <div class="quick-item">Leere Materialien<small>${emptyCount}</small></div>
       </div>
-      <div class="toolbar"><button class="secondary" onclick="deleteEmptyMaterialsAdmin()">Leere Materialien löschen</button><button class="secondary" onclick="deleteAllMaterialsAdmin()">Alle Materialien löschen</button><span class="badge gray">Backup davor</span></div>
+      <div class="toolbar"><button class="secondary" onclick="deleteEmptyMaterialsSystem()">Leere Materialien löschen</button><button class="secondary" onclick="deleteAllMaterialsSystem()">Alle Materialien löschen</button><span class="badge gray">Backup davor</span></div>
     </div>
   `;
   const body = $('#bulkMaterialBody');
   body.innerHTML = Array.from({ length: 8 }, (_, i) => adminBulkMaterialRowHtml(i)).join('');
   bindBulkMaterialRows();
   const adminSearch = $('#adminMaterialEditSearch');
-  if (adminSearch) adminSearch.addEventListener('input', (event) => setAdminMaterialEditFilter(event.target.value));
+  if (adminSearch) adminSearch.addEventListener('input', (event) => setSystemMaterialEditFilter(event.target.value));
 }
 
 function bindBulkMaterialRows() {
@@ -2191,7 +2627,7 @@ window.addBulkMaterialRows = (count = 5) => {
 
 window.clearBulkMaterialRows = () => {
   if (!confirm('Alle Eingaben in der Mehrfachanlage leeren?')) return;
-  renderAdminMaterials();
+  renderSystemMaterials();
 };
 
 function collectBulkMaterials() {
@@ -2258,15 +2694,15 @@ window.submitBulkMaterials = async () => {
 function renderUsers() {
   const users = state.users || [];
   $('#users').innerHTML = `
-    ${renderAdminSubnav('users')}
+    ${renderSystemSubnav('users')}
     <div class="toolbar">
       <button class="primary" onclick="openUserModal()">Benutzer anlegen</button>
       <button class="secondary" onclick="loadState()">Aktualisieren</button>
-      <span class="badge gray">Nur Admin</span>
+      
     </div>
     <div class="card">
       <h2>Benutzerverwaltung</h2>
-      <p class="muted">Hier werden die Zugänge für Laser, Büro, Chef und Admin angelegt. Deaktivierte Benutzer können sich nicht mehr anmelden.</p>
+      <p class="muted">Hier werden die Zugänge für Laser, Büro und Chef angelegt. Deaktivierte Benutzer können sich nicht mehr anmelden.</p>
       ${renderUsersTable(users, true)}
     </div>
   `;
@@ -2293,8 +2729,8 @@ function renderUsersTable(users, withActions = true) {
   `;
 }
 
-function renderAdmin() {
-  if (currentUser.role === 'ADMIN') return renderAdminDashboard();
+function renderSystem() {
+  if (currentUser.role === 'ADMIN') return renderSystemDashboard();
   const low = state.lowMaterials;
   const konsiCount = state.materials.filter(m => m.storage === 'KONSI').length;
   $('#admin').innerHTML = `
@@ -2318,11 +2754,11 @@ function renderSystemStatus(status) {
   </div>`;
 }
 
-function renderAdminSettings() {
+function renderSystemSettings() {
   const settings = state.settings || {};
   const status = state.systemStatus || {};
   $('#adminSettings').innerHTML = `
-    ${renderAdminSubnav('adminSettings')}
+    ${renderSystemSubnav('adminSettings')}
     <div class="split">
       <div class="card">
         <h2>Grundeinstellungen</h2>
@@ -2350,7 +2786,7 @@ function renderAdminSettings() {
     event.preventDefault();
     try {
       await api('/api/admin/settings', { method: 'PATCH', body: JSON.stringify({ standardStrengths: $('#standardStrengths').value, autoBackupOnStart: $('#autoBackupOnStart').checked, inventoryLastDate: $('#inventoryLastDate').value, inventoryIntervalMonths: Number($('#inventoryIntervalMonths').value || 3) }) });
-      showToast('Einstellungen gespeichert', 'Admin-Einstellungen wurden aktualisiert.');
+      showToast('Einstellungen gespeichert', 'System-Einstellungen wurden aktualisiert.');
       await loadState(true);
     } catch (error) { showToast('Fehler', error.message); }
   });
@@ -2361,16 +2797,16 @@ function renderRoleRights() {
     ['Laser', 'Material sehen, Entnahme buchen, Inventur zählen, Bestellung angeben'],
     ['Büro', 'Material pflegen, Bestand buchen, Bestellungen bearbeiten, Inventur prüfen/abschließen'],
     ['Chef', 'Gesamtübersicht, Material archivieren, Bestellungen und Inventur abschließen'],
-    ['Admin', 'Benutzer, Einstellungen, Backup, Import/Export, Archiv, Materialpflege ohne Bestellungen/Inventuren']
+    ['Verwaltung', 'Benutzer, Einstellungen, Backup, Import/Export, Archiv, Materialpflege ohne Bestellungen/Inventuren']
   ];
   return `<table><thead><tr><th>Rolle</th><th>Darf</th></tr></thead><tbody>${rows.map(r => `<tr><td><strong>${r[0]}</strong></td><td>${escapeHtml(r[1])}</td></tr>`).join('')}</tbody></table>`;
 }
 
-function renderAdminBackup() {
+function renderSystemBackup() {
   const backups = state.backups || [];
   $('#adminBackup').innerHTML = `
-    ${renderAdminSubnav('adminBackup')}
-    <div class="toolbar"><button class="primary" onclick="createBackupNow()">Backup erstellen</button><button class="secondary" onclick="loadState()">Aktualisieren</button><span class="badge gray">Nur Admin</span></div>
+    ${renderSystemSubnav('adminBackup')}
+    <div class="toolbar"><button class="primary" onclick="createBackupNow()">Backup erstellen</button><button class="secondary" onclick="loadState()">Aktualisieren</button></div>
     <div class="card"><h2>Datensicherungen</h2><p class="muted">Vor Wiederherstellung wird automatisch nochmal eine Sicherung erstellt.</p>${renderBackupTable(backups)}</div>
   `;
 }
@@ -2380,9 +2816,9 @@ function renderBackupTable(backups) {
   return `<table><thead><tr><th>Backup</th><th>Datum</th><th>Größe</th><th>Aktion</th></tr></thead><tbody>${backups.map(b => `<tr><td><code>${escapeHtml(b.file)}</code></td><td>${fmtDate(b.createdAt)}</td><td>${Math.round((Number(b.size)||0)/1024)} KB</td><td><div class="row-actions"><button class="ghost mini" onclick="downloadBackup('${jsString(b.file)}')">Download</button><button class="secondary danger mini" onclick="restoreBackup('${jsString(b.file)}')">Wiederherstellen</button></div></td></tr>`).join('')}</tbody></table>`;
 }
 
-function renderAdminImportExport() {
+function renderSystemImportExport() {
   $('#adminImportExport').innerHTML = `
-    ${renderAdminSubnav('adminImportExport')}
+    ${renderSystemSubnav('adminImportExport')}
     <div class="split">
       <div class="card"><h2>Materialliste exportieren</h2><p class="muted">Exportiert alle aktiven und archivierten Materialien als CSV.</p><button class="primary" onclick="exportMaterialsCsv()">CSV exportieren</button></div>
       <div class="card"><h2>CSV / Google Sheets importieren</h2><p class="muted">Büro-Format: Regal; Material; t=; Format; Menge; Abmass X; Abmass Y. Wird automatisch in die Material-Anordnung übernommen. Google-Sheets-Kopien mit Tabulatoren werden erkannt.</p><textarea id="importCsv" placeholder="CSV oder aus Google Sheets kopierte Tabelle hier einfügen"></textarea><div class="modal-footer"><button class="primary" onclick="importMaterialsCsv()">Materialien importieren</button></div></div>
@@ -2393,10 +2829,10 @@ Konsi Alu;2;3000x1500;Regal 6;0;2;1;KONSI;nein;KONSI-001,KONSI-002</pre></div>
   `;
 }
 
-function renderAdminArchive() {
+function renderSystemArchive() {
   const archived = state.archivedMaterials || [];
   $('#adminArchive').innerHTML = `
-    ${renderAdminSubnav('adminArchive')}
+    ${renderSystemSubnav('adminArchive')}
     <div class="toolbar"><button class="secondary" onclick="loadState()">Aktualisieren</button><span class="badge gray">Archivierte Materialien: ${archived.length}</span></div>
     <div class="card"><h2>Material-Archiv</h2>${archived.length ? renderArchiveTable(archived) : '<div class="empty">Keine archivierten Materialien vorhanden.</div>'}</div>
   `;
@@ -2406,20 +2842,20 @@ function renderArchiveTable(items) {
   return `<table><thead><tr><th>Material</th><th>Menge</th><th>Regal</th><th>Aktualisiert</th><th>Aktion</th></tr></thead><tbody>${items.map(m => `<tr><td><strong>${escapeHtml(materialTitle(m))}</strong><br><small>${escapeHtml(m.format || '')}</small></td><td>${quantityLabel(m)}</td><td>${escapeHtml(m.shelf || '-')}</td><td>${fmtDate(m.updatedAt)}</td><td><button class="secondary mini" onclick="restoreMaterial('${jsString(m.id)}')">Wiederherstellen</button></td></tr>`).join('')}</tbody></table>`;
 }
 
-function renderAdminLog() {
-  $('#adminLog').innerHTML = `${renderAdminSubnav('adminLog')}<div class="toolbar"><button class="secondary" onclick="loadState()">Aktualisieren</button><span class="badge gray">Letzte ${state.activities.length} Einträge</span></div><div class="card"><h2>Systemprotokoll</h2>${renderActivityList(state.activities)}</div>`;
+function renderSystemLog() {
+  $('#adminLog').innerHTML = `${renderSystemSubnav('adminLog')}<div class="toolbar"><button class="secondary" onclick="loadState()">Aktualisieren</button><span class="badge gray">Letzte ${state.activities.length} Einträge</span></div><div class="card"><h2>Systemprotokoll</h2>${renderActivityList(state.activities)}</div>`;
 }
 
 
 
 window.openUserModal = (userId = '') => {
-  if (!state.permissions.canManageUsers) return showToast('Keine Berechtigung', 'Nur Admin darf Benutzer verwalten.');
+  if (!state.permissions.canManageUsers) return showToast('Keine Berechtigung', 'Nur der Systemzugang darf Benutzer verwalten.');
   const u = userId ? (state.users || []).find(x => x.id === userId) : null;
   const isEdit = Boolean(u);
   const data = u || { username: '', name: '', role: 'LASER', active: true };
   openModal(`
     <h2>${isEdit ? 'Benutzer bearbeiten' : 'Benutzer anlegen'}</h2>
-    <p class="muted">Der Admin legt hier fest, mit welchem Benutzername, Passwort und welcher Rolle sich jemand anmelden darf.</p>
+    <p class="muted">Hier wird festgelegt, mit welchem Benutzername, Passwort und welcher Rolle sich jemand anmelden darf.</p>
     <form id="userForm" class="form-grid">
       <div><label>Benutzername</label><input id="userUsername" value="${escapeHtml(data.username)}" required placeholder="z. B. laser2"></div>
       <div><label>Profilname</label><input id="userName" value="${escapeHtml(data.name)}" required placeholder="z. B. Laser Halle 2"></div>
@@ -2531,19 +2967,19 @@ window.undoMaterialChange = async (materialId) => {
 };
 
 
-window.openAdminMaterialEditModal = (materialId) => {
-  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Nur Admin darf Materialdaten korrigieren.');
+window.openSystemMaterialEditModal = (materialId) => {
+  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Nur der Systemzugang darf Materialdaten korrigieren.');
   const data = (state.materials || []).find(m => m.id === materialId && !m.archived);
   if (!data) return showToast('Nicht gefunden', 'Material wurde nicht gefunden.');
   const stockText = `${quantityLabel(data)} · ${escapeHtml(materialLocationLabel(data))}`;
   openModal(`
     <div class="modal-titlebar material-input-titlebar">
       <div>
-        <span class="modal-kicker">Admin-Korrektur</span>
+        <span class="modal-kicker">Korrektur</span>
         <h2>Materialdaten korrigieren</h2>
         <p>Bestand bleibt unverändert. Nur Stammdaten werden korrigiert.</p>
       </div>
-      <span class="modal-version-pill">v1.2</span>
+      <span class="modal-version-pill">v1.3</span>
     </div>
     <div class="modal-subtitle-card"><strong>${escapeHtml(materialTitle(data))}</strong><br>${stockText}<br><span>Stärke, Sonderformat und Schreibweise werden automatisch vereinheitlicht, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</span></div>
     <form id="adminMaterialEditForm" class="form-grid material-input-form">
@@ -2560,17 +2996,17 @@ window.openAdminMaterialEditModal = (materialId) => {
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Korrektur speichern</button></div>
     </form>
   `);
-  const updateAdminEditStorage = () => {
+  const updateSystemEditStorage = () => {
     const isKonsiForm = $('#adminEditMatStorage').value === 'KONSI';
     $('#adminEditMatShelfRow').classList.toggle('hidden', isKonsiForm);
     $('#adminEditMatKonsiInfo').classList.toggle('hidden', !isKonsiForm);
   };
-  $('#adminEditMatStorage').addEventListener('change', updateAdminEditStorage);
+  $('#adminEditMatStorage').addEventListener('change', updateSystemEditStorage);
   attachAutoCase('#adminEditMatName', normalizeMaterialCaseInput);
   attachAutoCase('#adminEditMatArticleNumber', normalizeArticleNumberInput);
   attachThicknessAutoFormat('#adminEditMatThickness', '#adminEditMatThicknessPreview');
   attachFormatControls('#adminEditMatFormat', '#adminEditMatCustomFormatRow', '#adminEditMatCustomFormat', '#adminEditMatCustomFormatPreview');
-  updateAdminEditStorage();
+  updateSystemEditStorage();
   $('#adminMaterialEditForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const isKonsiForm = $('#adminEditMatStorage').value === 'KONSI';
@@ -2614,8 +3050,8 @@ window.openAdminMaterialEditModal = (materialId) => {
 window.openMaterialModal = (materialId = '', presetStorage = '') => {
   const m = materialId ? state.materials.find(x => x.id === materialId) : null;
   const isEdit = Boolean(m);
-  if (isEdit && !state.permissions.canEditMaterial) return showToast('Keine Berechtigung', 'Materialdaten darf nur der Admin bearbeiten.');
-  if (!isEdit && !state.permissions.canCreateMaterial) return showToast('Keine Berechtigung', 'Material darf nur von Büro, Chef oder Admin angelegt werden.');
+  if (isEdit && !state.permissions.canEditMaterial) return showToast('Keine Berechtigung', 'Materialdaten dürfen nur über den Systemzugang bearbeitet werden.');
+  if (!isEdit && !state.permissions.canCreateMaterial) return showToast('Keine Berechtigung', 'Material darf nur von Büro oder Chef angelegt werden.');
   const data = m || { name:'', category:'', type:'Tafel', thickness:'', format:'', unit: presetStorage === 'KONSI' ? 'Pakete' : 'Tafeln', stock:0, sheetStock:0, packageNumbers:[], minStock:DEFAULT_MATERIAL_MIN_STOCK, storage: presetStorage || 'HAUPTLAGER', shelf: presetStorage === 'KONSI' ? konsiLocation() : 'Regal 1', compartment:'', supplier:'', articleNumber:'', rest:false, note:'' };
   if (!data.storage) data.storage = 'HAUPTLAGER';
   if (!data.shelf) data.shelf = data.storage === 'KONSI' ? konsiLocation() : 'Regal 1';
@@ -2627,7 +3063,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
         <h2>${isEdit ? 'Material bearbeiten' : 'Material anlegen'}</h2>
         <p>${isEdit ? 'Daten sauber korrigieren, Bestand bleibt kontrolliert.' : 'Neues Material geordnet anlegen.'}</p>
       </div>
-      <span class="modal-version-pill">v1.2</span>
+      <span class="modal-version-pill">v1.3</span>
     </div>
     <div class="modal-subtitle-card"><strong>Hinweis:</strong> Stärke, Sonderformat und Schreibweise werden automatisch einheitlich gespeichert, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</div>
     <form id="materialForm" class="form-grid material-input-form">
@@ -2949,7 +3385,7 @@ window.previewPasteTable = () => {
 };
 
 window.openPasteTableModal = () => {
-  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Tabellenimport ist nur für Admin freigegeben.');
+  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Tabellenimport ist nur für den Systemzugang freigegeben.');
   const konsiMode = currentPage === 'konsi';
   window.__pasteTableMode = konsiMode ? 'KONSI' : '';
   const title = konsiMode ? 'Konsi-Tabelle einfügen' : 'Materialien aus Tabelle einfügen';
@@ -2969,7 +3405,7 @@ window.openPasteTableModal = () => {
       <button class="secondary" onclick="previewPasteTable()">Vorschau prüfen</button>
       <button class="primary" onclick="importMaterialsFromTable()">${konsiMode ? 'Konsi-Pakete übernehmen' : 'Materialien übernehmen'}</button>
     </div>
-    <div class="footer-note">${konsiMode ? 'Konsi bleibt Standort Garage. Der Import bleibt nur für Admin freigegeben.' : 'Konsi separat im Konsi-Lager über Material ID · Material · Format · Stärke einfügen.'}</div>
+    <div class="footer-note">${konsiMode ? 'Konsi bleibt Standort Garage. Der Import bleibt nur für den Systemzugang freigegeben.' : 'Konsi separat im Konsi-Lager über Material ID · Material · Format · Stärke einfügen.'}</div>
   `);
   $('#pasteTableText').addEventListener('input', () => {
     clearTimeout(window.__pastePreviewTimer);
@@ -2978,7 +3414,7 @@ window.openPasteTableModal = () => {
 };
 
 window.importMaterialsFromTable = async () => {
-  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Tabellenimport ist nur für Admin freigegeben.');
+  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Tabellenimport ist nur für den Systemzugang freigegeben.');
   const table = ($('#pasteTableText') && $('#pasteTableText').value) || '';
   if (!table.trim()) return showToast('Keine Eingabe', 'Bitte die Tabelle aus Google Sheets einfügen.');
   const mode = window.__pasteTableMode || '';
@@ -3007,7 +3443,7 @@ window.importMaterialsFromTable = async () => {
 
 
 window.deleteNonOrderMaterial = async (materialId) => {
-  if (!state.permissions.canDeleteNonOrderMaterial) return showToast('Keine Berechtigung', 'Nur Laser und Admin dürfen einzelne Materialien mit Bestand 0 löschen.');
+  if (!state.permissions.canDeleteNonOrderMaterial) return showToast('Keine Berechtigung', 'Laser und Systemzugang dürfen einzelne Materialien mit Bestand 0 löschen.');
   const m = state.materials.find(x => x.id === materialId);
   if (!m) return;
   const blockReason = materialDeleteBlockReasonClient(m);
@@ -3020,11 +3456,11 @@ window.deleteNonOrderMaterial = async (materialId) => {
         <h2>Eintrag entfernen</h2>
         <p>Nur möglich bei Bestand 0 und ohne offene Bestellung.</p>
       </div>
-      <span class="modal-version-pill">v1.2</span>
+      <span class="modal-version-pill">v1.3</span>
     </div>
     <div class="modal-subtitle-card delete-warning-card">
       <strong>${escapeHtml(title)}</strong><br>
-      <span>Dieser Eintrag wird aus der aktiven Materialliste entfernt. Die Historie bleibt nachvollziehbar und der Admin sieht den Vorgang im Archiv.</span>
+      <span>Dieser Eintrag wird aus der aktiven Materialliste entfernt. Die Historie bleibt nachvollziehbar und die Verwaltung sieht den Vorgang im Archiv.</span>
     </div>
     <div class="delete-summary-grid">
       <div class="delete-fact"><small>Bestand</small><strong>${escapeHtml(quantityLabel(m))}</strong></div>
@@ -3214,12 +3650,14 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
 
   const availableModes = [];
   if (canRequest) availableModes.push(['REQUEST', 'Bestellanforderung']);
+  if (canRequest) availableModes.push(['KONSI_REQUEST', 'Konsi-Bestellung']);
   if (canDirectIncoming) availableModes.push(['DIRECT_INCOMING', 'Wareneingang ohne Bestellung']);
   let mode = initialMode && availableModes.some(([value]) => value === initialMode) ? initialMode : (availableModes[0] ? availableModes[0][0] : 'REQUEST');
   const modeOptions = availableModes.map(([value, label]) => `<option value="${value}" ${value === mode ? 'selected' : ''}>${label}</option>`).join('');
 
   const orderMaterials = (state.materials || []).filter(m => !m.archived && !m.rest);
-  const orderOptions = orderMaterials.map(m => `<option value="${escapeHtml(m.id)}" ${m.id === materialId ? 'selected' : ''}>${escapeHtml(materialTitle(m))} · ${escapeHtml(storageLabel(m))} · ${quantityLabel(m)}</option>`).join('');
+  const orderOptions = orderMaterials.filter(m => !isKonsi(m)).map(m => `<option value="${escapeHtml(m.id)}" ${m.id === materialId ? 'selected' : ''}>${escapeHtml(materialTitle(m))} · ${escapeHtml(storageLabel(m))} · ${quantityLabel(m)}</option>`).join('');
+  const konsiOrderOptions = orderMaterials.filter(isKonsi).map(m => `<option value="${escapeHtml(m.id)}" ${m.id === materialId ? 'selected' : ''}>${escapeHtml(materialTitle(m))} · Konsi · ${quantityLabel(m)}</option>`).join('');
   const directOptions = (state.materials || [])
     .filter(m => !m.archived && !m.rest && !isKonsi(m))
     .map(m => `<option value="${escapeHtml(m.id)}" ${m.id === materialId ? 'selected' : ''}>${escapeHtml(materialTitle(m))} · ${escapeHtml(formatDisplayValue(m.format || '-'))} · ${escapeHtml(materialLocationLabel(m))}</option>`)
@@ -3232,14 +3670,16 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
       <div class="form-full"><label>Art des Vorgangs</label><select id="orderCaptureMode">${modeOptions}</select></div>
 
       <div class="form-full capture-section" id="orderRequestSection">
-        <div class="notice"><strong>Bestellanforderung</strong><br><span id="orderRequestNotice">Jede Rolle kann hier eine Anfrage erfassen. Das Material kann aus der Liste gewählt oder frei eingetippt werden.</span></div>
+        <div class="notice"><strong id="orderRequestTitle">Bestellanforderung</strong><br><span id="orderRequestNotice">Jede Rolle kann hier eine Anfrage erfassen. Das Material kann aus der Liste gewählt oder frei eingetippt werden.</span></div>
       </div>
+      <div class="form-full capture-section" id="orderCustomerSection"><label>Kunde</label><input id="orderCustomer" placeholder="z. B. Kunde oder Auftrag / leer = Ohne Kunde"><div class="format-hint">Danach werden Bestellungen und PDFs pro Kunde gruppiert.</div></div>
       <div class="capture-section" id="orderInputModeSection"><label>Materialangabe</label><select id="orderInputMode"><option value="EXISTING">Material aus Liste</option><option value="MANUAL">Material frei eingeben</option></select></div>
-      <div class="form-full capture-section" id="orderMaterialSection"><label>Material aus Liste</label><select id="orderMaterial">${orderOptions}</select></div>
+      <div class="form-full capture-section" id="orderMaterialSection"><label id="orderMaterialLabel">Material aus Liste</label><select id="orderMaterial" data-normal-options="${escapeHtml(orderOptions)}" data-konsi-options="${escapeHtml(konsiOrderOptions)}">${orderOptions}</select></div>
       <div class="capture-section hidden" id="orderManualNameSection"><label>Material</label><input id="orderManualName" placeholder="z. B. 1.4571 oder AlMg3"></div>
       <div class="capture-section hidden" id="orderManualThicknessSection"><label>Stärke</label><input id="orderManualThickness" placeholder="z. B. 2,5 oder 2,50 mm"><div class="format-hint">Wird automatisch z. B. zu 2,50 mm.</div></div>
       <div class="capture-section" id="orderAmountSection"><label id="orderAmountLabel">Menge</label><input id="orderAmount" type="number" min="1" step="1" value="1"></div>
       <div class="capture-section" id="orderUnitSection"><label>Einheit</label><select id="orderUnit"><option value="PAKET">Paket(e)</option><option value="TAFEL">Tafel(n)</option></select></div>
+      ${canSeePrices() ? `<div class="capture-section" id="orderKgPriceSection"><label>KG-Preis €/kg</label><input id="orderKgPrice" type="number" min="0" step="0.01" placeholder="z. B. 2,35"><div class="format-hint">Nur Büro/Chef.</div></div>` : ''}
       <div class="form-full capture-section" id="orderNoteSection"><label id="orderNoteLabel">Hinweis</label><textarea id="orderNote" placeholder="z. B. Lieferant, dringend, Rückfrage ..."></textarea></div>
 
       <div class="form-full capture-section hidden" id="directIncomingSection">
@@ -3252,6 +3692,7 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
       <div class="capture-section hidden" id="directIncomingShelfSection"><label>Ablageort</label><select id="directIncomingShelf">${shelfOptions('Carport')}</select></div>
       <div class="capture-section hidden" id="directIncomingPackagesSection"><label>Gelieferte Pakete</label><input id="directIncomingPackages" type="number" min="0" step="1" value="1"></div>
       <div class="capture-section hidden" id="directIncomingWeightSection"><label>Gewicht pro Paket kg</label><input id="directIncomingWeight" type="number" min="0" step="0.1" placeholder="z. B. 850"><div class="format-hint">Optional. Daraus kann die Tafeln-Menge berechnet werden.</div></div>
+      ${canSeePrices() ? `<div class="capture-section hidden" id="directIncomingKgPriceSection"><label>KG-Preis €/kg</label><input id="directIncomingKgPrice" type="number" min="0" step="0.01" placeholder="z. B. 2,35"><div class="format-hint">Nur Büro/Chef.</div></div>` : ''}
       <div class="form-full weight-calc-box capture-section hidden" id="directIncomingCalcSection"><div><strong>Berechnung</strong><br><span id="directIncomingWeightHint">Bei neuem Material Stärke und Format eintragen, dann wird die Berechnung genauer.</span></div><div class="format-hint" id="directIncomingCalcHint">Pakete und Gewicht pro Paket eintragen, dann wird eine Tafeln-Menge vorgeschlagen.</div></div>
       <div class="capture-section hidden" id="directIncomingSheetsSection"><label>Berechnete / gelieferte Tafeln</label><input id="directIncomingSheets" type="number" min="0" step="1" value="0"></div>
       <div class="form-full capture-section hidden" id="directIncomingNoteSection"><label>Bemerkung</label><textarea id="directIncomingNote" placeholder="z. B. Lieferschein, Lieferant, ohne Bestellung gekommen ..."></textarea></div>
@@ -3260,8 +3701,8 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
     </form>
   `);
 
-  const orderSectionIds = ['orderRequestSection','orderInputModeSection','orderMaterialSection','orderManualNameSection','orderManualThicknessSection','orderAmountSection','orderUnitSection','orderNoteSection'];
-  const incomingSectionIds = ['directIncomingSection','directIncomingMaterialSection','directIncomingNameSection','directIncomingThicknessSection','directIncomingFormatSection','directIncomingShelfSection','directIncomingPackagesSection','directIncomingWeightSection','directIncomingCalcSection','directIncomingSheetsSection','directIncomingNoteSection'];
+  const orderSectionIds = ['orderRequestSection','orderCustomerSection','orderInputModeSection','orderMaterialSection','orderManualNameSection','orderManualThicknessSection','orderAmountSection','orderUnitSection','orderKgPriceSection','orderNoteSection'];
+  const incomingSectionIds = ['directIncomingSection','directIncomingMaterialSection','directIncomingNameSection','directIncomingThicknessSection','directIncomingFormatSection','directIncomingShelfSection','directIncomingPackagesSection','directIncomingWeightSection','directIncomingKgPriceSection','directIncomingCalcSection','directIncomingSheetsSection','directIncomingNoteSection'];
   const showIds = (ids, show) => ids.forEach(id => { const el = $('#'+id); if (el) el.classList.toggle('hidden', !show); });
 
   const selectedOrderMaterial = () => (state.materials || []).find(m => m.id === $('#orderMaterial').value) || null;
@@ -3273,15 +3714,25 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
   };
 
   const updateOrderEntryMode = () => {
+    const captureMode = $('#orderCaptureMode').value;
+    const konsiMode = captureMode === 'KONSI_REQUEST';
     const manual = $('#orderInputMode').value === 'MANUAL';
+    const select = $('#orderMaterial');
+    const expectedMode = konsiMode ? 'KONSI' : 'NORMAL';
+    if (select.dataset.mode !== expectedMode) {
+      select.innerHTML = konsiMode ? (select.dataset.konsiOptions || '<option value="">Kein Konsi-Material angelegt</option>') : (select.dataset.normalOptions || '');
+      if (materialId && Array.from(select.options).some(opt => opt.value === materialId)) select.value = materialId;
+      select.dataset.mode = expectedMode;
+    }
     const selected = selectedOrderMaterial();
-    const konsi = !manual && isKonsi(selected);
+    const konsi = konsiMode || (!manual && isKonsi(selected));
+    $('#orderMaterialLabel').textContent = konsiMode ? 'Konsi-Material aus Liste' : 'Material aus Liste';
     $('#orderMaterialSection').classList.toggle('hidden', manual);
     $('#orderManualNameSection').classList.toggle('hidden', !manual);
     $('#orderManualThicknessSection').classList.toggle('hidden', !manual);
     $('#orderUnit').value = konsi ? 'PAKET' : $('#orderUnit').value;
     $('#orderUnit option[value="TAFEL"]').disabled = konsi;
-    $('#orderAmountLabel').textContent = 'Menge';
+    $('#orderAmountLabel').textContent = konsi ? 'Menge / Pakete' : 'Menge';
   };
 
   function updateDirectIncomingCalculation() {
@@ -3293,7 +3744,9 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
     $('#directIncomingWeightHint').textContent = weightInfoText(material);
     if (sheets > 0) {
       $('#directIncomingSheets').value = sheets;
-      $('#directIncomingCalcHint').textContent = `${packages} Paket(e) × ${String(weight).replace('.', ',')} kg → ca. ${sheets} Tafeln${oneSheet ? ` (${oneSheet.toFixed(1).replace('.', ',')} kg/Tafel)` : ''}.`;
+      const price = canSeePrices() && $('#directIncomingKgPrice') ? Number($('#directIncomingKgPrice').value || 0) : 0;
+      const priceText = price && packages && weight ? ` · Wert: ${formatMoney(packages * weight * price)} bei ${formatKgPrice(price)}` : '';
+      $('#directIncomingCalcHint').textContent = `${packages} Paket(e) × ${String(weight).replace('.', ',')} kg → ca. ${sheets} Tafeln${oneSheet ? ` (${oneSheet.toFixed(1).replace('.', ',')} kg/Tafel)` : ''}${priceText}.`;
     } else {
       $('#directIncomingCalcHint').textContent = 'Pakete und Gewicht pro Paket eintragen, dann wird eine Tafeln-Menge vorgeschlagen.';
     }
@@ -3316,12 +3769,17 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
   const updateCaptureMode = () => {
     const current = $('#orderCaptureMode').value;
     const isIncoming = current === 'DIRECT_INCOMING';
+    const isKonsiOrder = current === 'KONSI_REQUEST';
     showIds(orderSectionIds, !isIncoming);
     showIds(incomingSectionIds, isIncoming);
     $('#orderSubmitButton').textContent = isIncoming ? 'Wareneingang buchen' : 'Anfrage senden';
+    $('#orderRequestTitle').textContent = isKonsiOrder ? 'Konsi-Bestellung' : 'Bestellanforderung';
+    $('#orderRequestNotice').textContent = isKonsiOrder
+      ? 'Konsi wird als eigene Anfrage geführt und bleibt in der Bestellübersicht getrennt von normalen Bestellungen.'
+      : 'Jede Rolle kann hier eine Anfrage erfassen. Das Material kann aus der Liste gewählt oder frei eingetippt werden.';
     $('#orderCaptureHint').textContent = isIncoming
       ? 'Wareneingang ohne Bestellung wird sofort als gelieferter Eingang gebucht.'
-      : 'Bestellanforderung wird als offene Anfrage für Büro/Chef gespeichert.';
+      : (isKonsiOrder ? 'Konsi-Bestellung wird als separate offene Anfrage gespeichert.' : 'Bestellanforderung wird als offene Anfrage für Büro/Chef gespeichert.');
     if (isIncoming) fillIncomingFromSelected();
     else updateOrderEntryMode();
   };
@@ -3332,7 +3790,7 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
   $('#orderManualName').addEventListener('blur', () => { $('#orderManualName').value = normalizeMaterialCaseInput($('#orderManualName').value); });
   $('#orderManualThickness').addEventListener('blur', () => { $('#orderManualThickness').value = normalizeThicknessInput($('#orderManualThickness').value); });
   $('#directIncomingMaterial').addEventListener('change', fillIncomingFromSelected);
-  ['directIncomingName','directIncomingThickness','directIncomingFormat','directIncomingPackages','directIncomingWeight'].forEach(id => {
+  ['directIncomingName','directIncomingThickness','directIncomingFormat','directIncomingPackages','directIncomingWeight','directIncomingKgPrice'].forEach(id => {
     const el = $('#'+id);
     if (el) el.addEventListener('input', updateDirectIncomingCalculation);
     if (el && el.tagName === 'SELECT') el.addEventListener('change', updateDirectIncomingCalculation);
@@ -3358,6 +3816,7 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
           receivedAmount: Number($('#directIncomingPackages').value || 0),
           receivedSheets: Number($('#directIncomingSheets').value || 0),
           packageWeightKg: Number($('#directIncomingWeight').value || 0),
+          kgPrice: canSeePrices() && $('#directIncomingKgPrice') ? $('#directIncomingKgPrice').value : '',
           targetShelf: $('#directIncomingShelf').value,
           note: $('#directIncomingNote').value
         };
@@ -3366,22 +3825,27 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
         orderFilter.status = 'delivered';
       } else {
         const manual = $('#orderInputMode').value === 'MANUAL';
-        const unit = $('#orderUnit').value === 'TAFEL' ? 'TAFEL' : 'PAKET';
+        const konsiMode = current === 'KONSI_REQUEST';
+        const unit = konsiMode ? 'PAKET' : ($('#orderUnit').value === 'TAFEL' ? 'TAFEL' : 'PAKET');
         const qty = Number($('#orderAmount').value || 0);
         if (!Number.isFinite(qty) || qty <= 0) return showToast('Menge fehlt', 'Bitte eine gültige Menge eintragen.');
         if (manual && !normalizeMaterialCaseInput($('#orderManualName').value).trim()) return showToast('Material fehlt', 'Bitte Material eintragen.');
         if (manual && !normalizeThicknessInput($('#orderManualThickness').value).trim()) return showToast('Stärke fehlt', 'Bitte Stärke eintragen.');
         const payload = {
           materialId: manual ? '' : $('#orderMaterial').value,
+          customerName: $('#orderCustomer').value,
           name: manual ? $('#orderManualName').value : '',
           thickness: manual ? normalizeThicknessInput($('#orderManualThickness').value) : '',
           amount: unit === 'PAKET' ? qty : 0,
           sheets: unit === 'TAFEL' ? qty : 0,
           unit,
+          storage: konsiMode ? 'KONSI' : '',
+          konsiOrder: konsiMode,
+          kgPrice: canSeePrices() && $('#orderKgPrice') ? $('#orderKgPrice').value : '',
           note: $('#orderNote').value
         };
         await api('/api/orders', { method: 'POST', body: JSON.stringify(payload) });
-        showToast('Bestellung gesendet', manual ? 'Die freie Materialanfrage wurde an Büro/Chef übertragen.' : 'Die Meldung wurde an Büro/Chef übertragen.');
+        showToast('Bestellung gesendet', konsiMode ? 'Die Konsi-Anfrage wurde separat gespeichert.' : (manual ? 'Die freie Materialanfrage wurde an Büro/Chef übertragen.' : 'Die Meldung wurde an Büro/Chef übertragen.'));
         orderFilter.status = 'requested';
       }
       closeModal();
@@ -3395,18 +3859,21 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
 
 window.openOrderedModal = (orderId) => {
   const o = state.orders.find(x => x.id === orderId);
+  const material = (state.materials || []).find(m => m.id === (o && o.materialId));
   openModal(`
     <h2>Als bestellt markieren</h2>
     <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Anfrage: ${orderQuantityLabel(o, 'request')}</span></p>
     <form id="orderedForm" class="form-grid">
+      <div class="form-full"><label>Kunde</label><input id="orderedCustomer" value="${escapeHtml(orderCustomerName(o))}" placeholder="z. B. Kunde oder Auftrag"><div class="format-hint">Änderung sortiert die Bestellung in die passende Kundengruppe.</div></div>
       <div><label>Bestellte Pakete</label><input id="orderedAmount" type="number" min="${o.storage === 'KONSI' ? '1' : '0'}" step="1" value="${Number(o.requestedAmount || 0)}"></div>${o.storage !== 'KONSI' ? `<div><label>Bestellte Tafeln</label><input id="orderedSheets" type="number" min="0" step="1" value="${Number(o.requestedSheets || 0)}"></div>` : ''}
+      ${canSeePrices() && o.storage !== 'KONSI' ? `<div><label>KG-Preis €/kg</label><input id="orderedKgPrice" type="number" min="0" step="0.01" value="${o.kgPrice ?? material?.kgPrice ?? ''}" placeholder="z. B. 2,35"><div class="format-hint">Nur sichtbar für Büro/Chef.</div></div>` : ''}
       <div class="form-full"><label>Hinweis vom Büro</label><textarea id="orderedNote" placeholder="z. B. Liefertermin, Lieferant oder Rückfrage ...">${escapeHtml(o.note || '')}</textarea></div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Bestellt melden</button></div>
     </form>
   `);
   $('#orderedForm').addEventListener('submit', async (event) => {
     event.preventDefault();
-    await updateOrder(orderId, 'ORDERED', $('#orderedAmount').value, $('#orderedNote').value, o.storage !== 'KONSI' ? $('#orderedSheets').value : 0);
+    await updateOrder(orderId, 'ORDERED', $('#orderedAmount').value, $('#orderedNote').value, o.storage !== 'KONSI' ? $('#orderedSheets').value : 0, canSeePrices() && $('#orderedKgPrice') ? $('#orderedKgPrice').value : '', $('#orderedCustomer').value);
     closeModal();
   });
 };
@@ -3422,15 +3889,18 @@ window.openReceiveModal = (orderId) => {
   const receivedP = Number(o.receivedAmount || 0);
   const openP = Math.max(0, orderedP - receivedP) || (orderedS > 0 ? 0 : 1);
   const defaultWeight = Number(o.lastPackageWeightKg || material.lastPackageWeightKg || 0) || '';
+  const defaultKgPrice = o.kgPrice ?? material.kgPrice ?? '';
   openModal(`
     <h2>${isK ? 'Konsi-Lieferung annehmen' : 'Lieferung annehmen'}</h2>
     <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Bestellt: ${orderQuantityLabel(o, 'ordered')} · Bereits geliefert: ${orderQuantityLabel(o, 'received')}</span></p>
     <form id="receiveForm" class="form-grid">
       <div><label>Gelieferte Pakete</label><input id="receivedAmount" type="number" min="0" step="1" value="${openP}"><div class="format-hint">Nur bei Lieferung: Pakete werden über Gewicht in Tafeln umgerechnet.</div></div>
       ${isK ? '' : `<div><label>Gewicht pro Paket kg</label><input id="packageWeightKg" type="number" min="0" step="0.1" value="${defaultWeight}" placeholder="z. B. 850"><div class="format-hint">Beispiel: 2 Pakete à 850 kg = 1700 kg.</div></div>
+      ${canSeePrices() ? `<div><label>KG-Preis €/kg</label><input id="receiveKgPrice" type="number" min="0" step="0.01" value="${defaultKgPrice}" placeholder="z. B. 2,35"><div class="format-hint">Nur Büro/Chef.</div></div>` : ''}
       <div class="form-full weight-calc-box"><div><strong>Berechnung</strong><br><span id="sheetWeightHint">${escapeHtml(weightInfoText(material))}</span></div><div class="format-hint" id="weightCalcHint">Pakete und Gewicht pro Paket eintragen, dann werden die Tafeln automatisch vorgeschlagen.</div></div>
       <div><label>Berechnete Tafeln</label><input id="receivedSheets" type="number" min="0" step="1" value="${Math.max(0, orderedS - Number(o.receivedSheets || 0))}"><div class="format-hint">Wird aus Pakete × Gewicht berechnet, kann aber überschrieben werden.</div></div>`}
       ${isK ? `<div class="form-full"><label>Konsi-Paketnummern</label><textarea id="receivedPackageNumbers" placeholder="eine Paketnummer pro Zeile"></textarea><div class="format-hint">Beim Konsi muss für jedes gelieferte Paket eine Nummer eingetragen werden.</div></div>` : `<div class="form-full"><label>Ablageort</label><select id="deliveryShelf">${shelfOptions('Carport')}</select><div class="format-hint">Standard ist Carport, weil Lieferungen meistens dort gelagert werden. Ausnahmen können direkt auf Bodenhaltung oder Regal 1–6 gebucht werden.</div></div>`}
+      <div class="form-full"><label>${isK ? 'Konsi Lieferschein PDF optional' : 'Lieferschein PDF optional'}</label><input id="receiveDeliveryNote" type="file" accept="application/pdf,.pdf"><div class="format-hint">Wird beim Datum und Kunden der Bestellung abgelegt und bleibt abrufbar.</div></div>
       <div class="form-full"><label>Bemerkung</label><textarea id="receiveNote" placeholder="z. B. Lieferschein, Schaden, Besonderheit ...">${escapeHtml(o.note || '')}</textarea></div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Lieferung annehmen</button></div>
     </form>
@@ -3442,14 +3912,17 @@ window.openReceiveModal = (orderId) => {
     const sheets = estimatedSheetsFromWeight(material, weight, packages);
     const oneSheet = sheetWeightKg(material);
     const totalWeight = packages * weight;
+    const price = canSeePrices() && $('#receiveKgPrice') ? Number($('#receiveKgPrice').value || 0) : 0;
+    const priceText = price && totalWeight ? ` · Wert: ${formatMoney(totalWeight * price)} bei ${formatKgPrice(price)}` : '';
     $('#weightCalcHint').textContent = sheets > 0
-      ? `Vorschlag: ${packages} Paket(e) × ${String(weight).replace('.', ',')} kg = ${String(totalWeight).replace('.', ',')} kg → ca. ${sheets} Tafeln${oneSheet ? ` (${oneSheet.toFixed(1).replace('.', ',')} kg/Tafel)` : ''}.`
+      ? `Vorschlag: ${packages} Paket(e) × ${String(weight).replace('.', ',')} kg = ${String(totalWeight).replace('.', ',')} kg → ca. ${sheets} Tafeln${oneSheet ? ` (${oneSheet.toFixed(1).replace('.', ',')} kg/Tafel)` : ''}${priceText}.`
       : 'Pakete und Gewicht pro Paket eintragen, dann werden die Tafeln automatisch vorgeschlagen.';
     if (sheets > 0) $('#receivedSheets').value = sheets;
   }
   if (!isK) {
     $('#receivedAmount').addEventListener('input', updateWeightCalculation);
     $('#packageWeightKg').addEventListener('input', updateWeightCalculation);
+    if ($('#receiveKgPrice')) $('#receiveKgPrice').addEventListener('input', updateWeightCalculation);
     updateWeightCalculation();
   }
   $('#receiveForm').addEventListener('submit', async (event) => {
@@ -3458,12 +3931,15 @@ window.openReceiveModal = (orderId) => {
       receivedAmount: Number($('#receivedAmount').value || 0),
       receivedSheets: isK ? 0 : Number($('#receivedSheets').value || 0),
       packageWeightKg: isK ? 0 : Number($('#packageWeightKg').value || 0),
+      kgPrice: (!isK && canSeePrices() && $('#receiveKgPrice')) ? $('#receiveKgPrice').value : '',
       targetShelf: isK ? '' : $('#deliveryShelf').value,
       packageNumbers: isK ? $('#receivedPackageNumbers').value : '',
       note: $('#receiveNote').value
     };
     try {
       await api(`/api/orders/${orderId}/receive`, { method: 'POST', body: JSON.stringify(payload) });
+      const noteFile = $('#receiveDeliveryNote') && $('#receiveDeliveryNote').files ? $('#receiveDeliveryNote').files[0] : null;
+      if (noteFile) await uploadPdfFileToOrderCustomer(orderDayKey(o), orderCustomerKey(o), isK ? 'konsi-delivery-note' : 'delivery-note', noteFile);
       closeModal();
       showToast('Lieferung angenommen', isK ? 'Konsi-Pakete wurden in der Garage übernommen.' : `Material wurde als geliefert nach ${payload.targetShelf || 'Carport'} gebucht.`);
       await loadState(true);
@@ -3488,6 +3964,7 @@ window.openDirectIncomingModal = () => {
       <div><label>Ablageort</label><select id="directIncomingShelf">${shelfOptions('Carport')}</select></div>
       <div><label>Gelieferte Pakete</label><input id="directIncomingPackages" type="number" min="0" step="1" value="1"></div>
       <div><label>Gewicht pro Paket kg</label><input id="directIncomingWeight" type="number" min="0" step="0.1" placeholder="z. B. 850"><div class="format-hint">Optional. Daraus kann die Tafeln-Menge berechnet werden.</div></div>
+      ${canSeePrices() ? `<div><label>KG-Preis €/kg</label><input id="directIncomingKgPrice" type="number" min="0" step="0.01" placeholder="z. B. 2,35"><div class="format-hint">Nur Büro/Chef.</div></div>` : ''}
       <div class="form-full weight-calc-box"><div><strong>Berechnung</strong><br><span id="directIncomingWeightHint">Bei neuem Material Stärke und Format eintragen, dann wird die Berechnung genauer.</span></div><div class="format-hint" id="directIncomingCalcHint">Pakete und Gewicht pro Paket eintragen, dann wird eine Tafeln-Menge vorgeschlagen.</div></div>
       <div><label>Berechnete / gelieferte Tafeln</label><input id="directIncomingSheets" type="number" min="0" step="1" value="0"></div>
       <div class="form-full"><label>Bemerkung</label><textarea id="directIncomingNote" placeholder="z. B. Lieferschein, Lieferant, ohne Bestellung gekommen ..."></textarea></div>
@@ -3522,13 +3999,15 @@ window.openDirectIncomingModal = () => {
     $('#directIncomingWeightHint').textContent = weightInfoText(material);
     if (sheets > 0) {
       $('#directIncomingSheets').value = sheets;
-      $('#directIncomingCalcHint').textContent = `${packages} Paket(e) × ${String(weight).replace('.', ',')} kg → ca. ${sheets} Tafeln${oneSheet ? ` (${oneSheet.toFixed(1).replace('.', ',')} kg/Tafel)` : ''}.`;
+      const price = canSeePrices() && $('#directIncomingKgPrice') ? Number($('#directIncomingKgPrice').value || 0) : 0;
+      const priceText = price && packages && weight ? ` · Wert: ${formatMoney(packages * weight * price)} bei ${formatKgPrice(price)}` : '';
+      $('#directIncomingCalcHint').textContent = `${packages} Paket(e) × ${String(weight).replace('.', ',')} kg → ca. ${sheets} Tafeln${oneSheet ? ` (${oneSheet.toFixed(1).replace('.', ',')} kg/Tafel)` : ''}${priceText}.`;
     } else {
       $('#directIncomingCalcHint').textContent = 'Pakete und Gewicht pro Paket eintragen, dann wird eine Tafeln-Menge vorgeschlagen.';
     }
   }
   $('#directIncomingMaterial').addEventListener('change', fillFromSelected);
-  ['directIncomingName','directIncomingThickness','directIncomingFormat','directIncomingPackages','directIncomingWeight'].forEach(id => {
+  ['directIncomingName','directIncomingThickness','directIncomingFormat','directIncomingPackages','directIncomingWeight','directIncomingKgPrice'].forEach(id => {
     const el = $('#'+id);
     if (el) el.addEventListener('input', updateDirectIncomingCalculation);
     if (el && el.tagName === 'SELECT') el.addEventListener('change', updateDirectIncomingCalculation);
@@ -3550,6 +4029,7 @@ window.openDirectIncomingModal = () => {
       receivedAmount: Number($('#directIncomingPackages').value || 0),
       receivedSheets: Number($('#directIncomingSheets').value || 0),
       packageWeightKg: Number($('#directIncomingWeight').value || 0),
+      kgPrice: canSeePrices() && $('#directIncomingKgPrice') ? $('#directIncomingKgPrice').value : '',
       targetShelf: $('#directIncomingShelf').value,
       note: $('#directIncomingNote').value
     };
@@ -3566,7 +4046,7 @@ window.openDirectIncomingModal = () => {
 };
 
 window.openEditDirectIncomingModal = (orderId) => {
-  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Nur Admin darf Wareneingänge ändern.');
+  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Nur der Systemzugang darf Wareneingänge ändern.');
   const order = (state.orders || []).find(o => o.id === orderId);
   if (!order || !order.directIncoming) return showToast('Nicht gefunden', 'Dieser Wareneingang kann nicht geändert werden.');
   const material = (state.materials || []).find(m => m.id === order.materialId) || {};
@@ -3579,7 +4059,7 @@ window.openEditDirectIncomingModal = (orderId) => {
   const weight = Number(order.lastPackageWeightKg || (Array.isArray(order.deliveries) && order.deliveries[0] ? order.deliveries[0].packageWeightKg : 0) || 0);
   openModal(`
     <h2>Wareneingang ändern</h2>
-    <p class="muted">Nur Admin: Hier kannst du einen falsch erfassten Wareneingang korrigieren. Die Änderung wird in Material und Historie protokolliert.</p>
+    <p class="muted">Über den Systemzugang kannst du einen falsch erfassten Wareneingang korrigieren. Die Änderung wird in Material und Historie protokolliert.</p>
     <form id="editDirectIncomingForm" class="form-grid">
       <div><label>Material</label><input id="editIncomingName" value="${escapeHtml(name)}" placeholder="z. B. S235"></div>
       <div><label>Stärke</label><input id="editIncomingThickness" required value="${escapeHtml(thickness)}" placeholder="z. B. 3 oder 3 mm"><div class="format-hint">Pflichtfeld</div></div>
@@ -3646,9 +4126,11 @@ window.openEditDirectIncomingModal = (orderId) => {
   });
 };
 
-window.updateOrder = async (orderId, action, orderedAmount = null, note = '', orderedSheets = 0) => {
+window.updateOrder = async (orderId, action, orderedAmount = null, note = '', orderedSheets = 0, kgPrice = '', customerName = undefined) => {
   try {
-    await api(`/api/orders/${orderId}`, { method: 'PATCH', body: JSON.stringify({ action, orderedAmount, orderedSheets, note }) });
+    const payload = { action, orderedAmount, orderedSheets, note, kgPrice };
+    if (customerName !== undefined) payload.customerName = customerName;
+    await api(`/api/orders/${orderId}`, { method: 'PATCH', body: JSON.stringify(payload) });
     showToast('Bestellung aktualisiert', 'Der neue Status wurde an alle Arbeitsplätze übertragen.');
     await loadState(true);
   } catch (error) { showToast('Fehler', error.message); }
@@ -3683,7 +4165,7 @@ window.exportMaterialsCsv = () => {
 };
 
 window.exportVisibleMaterialsCsv = () => {
-  if (!state.permissions.canExportMaterials) return showToast('Keine Berechtigung', 'CSV-Download ist für Büro, Chef und Admin freigegeben.');
+  if (!state.permissions.canExportMaterials) return showToast('Keine Berechtigung', 'CSV-Download ist für Büro und Chef freigegeben.');
   window.open(`/api/materials/export-csv?token=${encodeURIComponent(token)}`, '_blank');
 };
 
@@ -3716,8 +4198,8 @@ function isDeleteConfirmTextValid(value) {
   return text === 'MATERIALIEN LOESCHEN' || text === 'MATERIALIEN LOSCHEN';
 }
 
-window.deleteEmptyMaterialsAdmin = async () => {
-  if (!state.permissions.canManageSystem) return showToast('Keine Berechtigung', 'Nur Admin darf leere Materialien löschen.');
+window.deleteEmptyMaterialsSystem = async () => {
+  if (!state.permissions.canManageSystem) return showToast('Keine Berechtigung', 'Nur der Systemzugang darf leere Materialien löschen.');
   const emptyCount = [...(state.materials || []), ...(state.archivedMaterials || [])].filter(isEmptyMaterialClient).length;
   if (!emptyCount) return showToast('Keine leeren Materialien', 'Es gibt aktuell keine Materialpositionen mit Menge 0.');
   if (!confirm(`${emptyCount} leere Materialposition(en) wirklich löschen?\n\nVorher wird automatisch ein Backup erstellt.`)) return;
@@ -3730,8 +4212,8 @@ window.deleteEmptyMaterialsAdmin = async () => {
   } catch (error) { showToast('Fehler', error.message); }
 };
 
-window.deleteAllMaterialsAdmin = async () => {
-  if (!state.permissions.canManageSystem) return showToast('Keine Berechtigung', 'Nur Admin darf die Materialdatenbank leeren.');
+window.deleteAllMaterialsSystem = async () => {
+  if (!state.permissions.canManageSystem) return showToast('Keine Berechtigung', 'Nur der Systemzugang darf die Materialdatenbank leeren.');
   const activeCount = (state.materials || []).length;
   const archivedCount = (state.archivedMaterials || []).length;
   if (!activeCount && !archivedCount) return showToast('Keine Materialien', 'Die Materialdatenbank ist bereits leer.');
@@ -3780,7 +4262,7 @@ window.restoreMaterial = async (materialId) => {
 window.openChangePasswordModal = (force = false) => {
   openModal(`
     <h2>Passwort ändern</h2>
-    <p class="muted">${force ? 'Der Admin hat festgelegt, dass du dein Passwort ändern sollst.' : 'Neues Passwort speichern.'}</p>
+    <p class="muted">${force ? 'Der Systemzugang hat festgelegt, dass du dein Passwort ändern sollst.' : 'Neues Passwort speichern.'}</p>
     <form id="changePasswordForm" class="form-grid">
       <div class="form-full"><label>Altes Passwort</label><input id="oldPassword" type="password" required></div>
       <div><label>Neues Passwort</label><input id="newPassword" type="password" required minlength="4"></div>
