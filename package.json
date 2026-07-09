@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "2.7.0",
-  "description": "Eckl Eco Technics Materialverwaltung V2.7 - lesbare Karten und KG-Preis im CSV",
+  "version": "2.8.0",
+  "description": "Eckl Eco Technics Materialverwaltung V2.8 - sauberer Material-CSV-Export mit Header",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

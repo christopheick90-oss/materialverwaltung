@@ -217,7 +217,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '2.7';
+const PROGRAM_VERSION = '2.8';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -1847,22 +1847,171 @@ function csvEscape(value) {
   return /[;"\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+function csvLine(row) {
+  return row.map(csvEscape).join(';');
+}
+
+function csvDecimal(value, digits = 2) {
+  if (value === undefined || value === null || value === '') return '';
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '';
+  return number.toFixed(digits).replace('.', ',');
+}
+
+function csvInteger(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '0';
+  return String(Math.max(0, Math.round(number)));
+}
+
+function csvDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return cleanText(value, '');
+  const pad = part => String(part).padStart(2, '0');
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function csvYesNo(value) {
+  return value ? 'Ja' : 'Nein';
+}
+
 function csvKgPriceValue(material) {
   const value = material && material.kgPrice !== undefined && material.kgPrice !== null && material.kgPrice !== ''
     ? Math.max(0, numberOr(material.kgPrice, 0))
     : null;
-  return value === null ? '' : value.toFixed(2).replace('.', ',');
+  return value === null ? '' : csvDecimal(value, 2);
 }
 
-function materialsToCsv(materials) {
-  const header = ['Material','Stärke','Größe','Regal','Tafeln','Pakete','Mindestbestand','Bereich','Resttafel','Paketnummern','KG-Preis €/kg','Archiviert'];
-  const rows = materials.map(m => [
-    m.name, m.thickness, m.format, m.shelf,
-    m.storage === 'KONSI' ? 0 : (Number(m.sheetStock ?? m.stock) || 0),
-    m.storage === 'KONSI' ? (Number(m.stock) || 0) : (Number(m.packageStock) || 0),
-    m.minStock, m.storage, m.rest ? 'ja' : 'nein', normalizePackageNumbers(m.packageNumbers).join(','), csvKgPriceValue(m), m.archived ? 'ja' : 'nein'
-  ]);
-  return [header, ...rows].map(row => row.map(csvEscape).join(';')).join('\n');
+function csvFormatKind(material) {
+  const format = normalizeFormat(material && material.format);
+  return ALLOWED_FORMATS.includes(format) ? 'Standardformat' : 'Sonderformat';
+}
+
+function csvMaterialStatus(material) {
+  if (material && material.archived) return 'Archiviert';
+  if (material && material.deliveryPending) return 'Geliefert / zu verräumen';
+  return 'Aktiv';
+}
+
+function csvStockValues(material) {
+  const storage = normalizeStorage(material && material.storage, material && material.shelf);
+  const packageNumbers = normalizePackageNumbers(material && material.packageNumbers);
+  const sheets = storage === 'KONSI' ? 0 : Math.max(0, Number(material && (material.sheetStock ?? material.stock)) || 0);
+  const packages = storage === 'KONSI' ? Math.max(0, Number(material && material.stock) || packageNumbers.length || 0) : Math.max(0, Number(material && material.packageStock) || 0);
+  const totalLabel = [sheets ? `${csvInteger(sheets)} Tafeln` : '', packages ? `${csvInteger(packages)} Pakete` : ''].filter(Boolean).join(' / ') || '0';
+  return { sheets, packages, packageNumbers, totalLabel };
+}
+
+function csvCalculatedWeightKg(material, packages) {
+  const packageWeight = material && material.lastPackageWeightKg !== undefined && material.lastPackageWeightKg !== null ? Math.max(0, numberOr(material.lastPackageWeightKg, 0)) : 0;
+  return packageWeight > 0 && packages > 0 ? packageWeight * packages : 0;
+}
+
+function materialsToCsv(materials, options = {}) {
+  const list = Array.isArray(materials) ? materials.slice() : [];
+  list.sort((a, b) => {
+    const shelfCompare = normalizeShelf(a && a.shelf).localeCompare(normalizeShelf(b && b.shelf), 'de');
+    if (shelfCompare) return shelfCompare;
+    const nameCompare = normalizeMaterialName(a && a.name).localeCompare(normalizeMaterialName(b && b.name), 'de');
+    if (nameCompare) return nameCompare;
+    return normalizeThickness(a && a.thickness).localeCompare(normalizeThickness(b && b.thickness), 'de', { numeric: true });
+  });
+
+  const scope = cleanText(options.scope, 'Materialliste');
+  const exportedBy = cleanText(options.exportedBy, '');
+  const exportedAt = nowIso();
+  const activeCount = list.filter(item => !(item && item.archived)).length;
+  const archivedCount = list.length - activeCount;
+
+  const metaRows = [
+    [APP_NAME],
+    ['CSV-Export', scope],
+    ['Exportiert am', csvDateTime(exportedAt)],
+    ['Exportiert von', exportedBy || '-'],
+    ['Version', PROGRAM_VERSION],
+    ['Materialien gesamt', list.length],
+    ['Aktive Materialien', activeCount],
+    ['Archivierte Materialien', archivedCount],
+    ['Hinweis', 'Preise und Werte sind nur im Export für Büro/Chef/Admin enthalten.'],
+    []
+  ];
+
+  const header = [
+    'Nr.',
+    'Status',
+    'Lagerbereich',
+    'Lagerplatz',
+    'Fach / Ort',
+    'Material',
+    'Stärke',
+    'Format',
+    'Formatart',
+    'Tafeln',
+    'Pakete',
+    'Paketnummern',
+    'Gesamtbestand',
+    'Mindestbestand Tafeln',
+    'Resttafel',
+    'Lieferant',
+    'Teilenr.',
+    'Geliefert / zu verräumen',
+    'Geliefert am',
+    'Geliefert von',
+    'Letztes Paketgewicht kg',
+    'KG-Preis €/kg',
+    'Berechnetes Gewicht kg',
+    'Berechneter Warenwert €',
+    'Werkszeugnis vorhanden',
+    'Werkszeugnis Datei',
+    'Notiz',
+    'Erstellt am',
+    'Geändert am'
+  ];
+
+  const dataRows = list.map((material, index) => {
+    const stock = csvStockValues(material);
+    const calculatedWeight = csvCalculatedWeightKg(material, stock.packages);
+    const kgPrice = material && material.kgPrice !== undefined && material.kgPrice !== null && material.kgPrice !== '' ? Math.max(0, numberOr(material.kgPrice, 0)) : null;
+    const calculatedValue = calculatedWeight > 0 && kgPrice !== null ? calculatedWeight * kgPrice : 0;
+    return [
+      index + 1,
+      csvMaterialStatus(material),
+      normalizeStorage(material && material.storage, material && material.shelf),
+      normalizeShelf(material && material.shelf),
+      cleanText(material && material.compartment, ''),
+      normalizeMaterialName(material && material.name),
+      normalizeThickness(material && material.thickness),
+      normalizeFormat(material && material.format),
+      csvFormatKind(material),
+      csvInteger(stock.sheets),
+      csvInteger(stock.packages),
+      stock.packageNumbers.join(', '),
+      stock.totalLabel,
+      csvInteger(material && material.minStock),
+      csvYesNo(material && material.rest),
+      cleanText(material && material.supplier, ''),
+      cleanText(material && material.articleNumber, ''),
+      csvYesNo(material && material.deliveryPending),
+      csvDateTime(material && material.deliveredAt),
+      cleanText(material && material.deliveredBy, ''),
+      csvDecimal(material && material.lastPackageWeightKg, 2),
+      csvKgPriceValue(material),
+      calculatedWeight > 0 ? csvDecimal(calculatedWeight, 2) : '',
+      calculatedValue > 0 ? csvDecimal(calculatedValue, 2) : '',
+      csvYesNo(material && material.certificate && material.certificate.fileName),
+      cleanText(material && material.certificate && material.certificate.originalName, ''),
+      cleanText(material && material.note, ''),
+      csvDateTime(material && material.createdAt),
+      csvDateTime(material && material.updatedAt)
+    ];
+  });
+
+  return ['sep=;', ...metaRows.map(csvLine), csvLine(header), ...dataRows.map(csvLine)].join('\n');
+}
+
+function csvDateStamp() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function detectImportDelimiter(text) {
@@ -4419,16 +4568,16 @@ app.post('/api/admin/backups/:file/restore', requireAuth, allowRoles('ADMIN'), (
 });
 
 app.get('/api/admin/export/materials', requireAuth, allowRoles('ADMIN'), (req, res) => {
-  const csv = materialsToCsv(db.materials);
+  const csv = materialsToCsv(db.materials, { scope: 'Komplettliste inkl. archivierter Materialien', exportedBy: req.user.name });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', 'attachment; filename="eckl_materialien_admin_komplett.csv"');
+  res.setHeader('Content-Disposition', `attachment; filename="eckl_materialien_admin_komplett_${csvDateStamp()}.csv"`);
   res.send('\uFEFF' + csv);
 });
 
 app.get('/api/materials/export-csv', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
-  const csv = materialsToCsv(visibleMaterials());
+  const csv = materialsToCsv(visibleMaterials(), { scope: 'Aktive Materialliste', exportedBy: req.user.name });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', 'attachment; filename="eckl_materialliste_aktiv.csv"');
+  res.setHeader('Content-Disposition', `attachment; filename="eckl_materialliste_aktiv_${csvDateStamp()}.csv"`);
   res.send('\uFEFF' + csv);
 });
 
