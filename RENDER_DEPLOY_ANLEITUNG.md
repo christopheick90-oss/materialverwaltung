@@ -1,3 +1,3 @@
-# Render Deploy V2.3
+# Render Deployment v2.4
 
-Normales Render-Deployment wie bisher. Nach dem Upload bitte Cache leeren oder mit `?v=2.3` neu laden.
+ZIP hochladen oder Repository aktualisieren. Version v2.4 enthält den neuen Reiter „Ausgebucht“ mit Dokumentenübernahme.

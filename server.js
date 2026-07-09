@@ -217,7 +217,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '2.3';
+const PROGRAM_VERSION = '2.4';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -465,6 +465,169 @@ function sendCustomerDocument(req, res, options) {
   res.sendFile(filePath);
 }
 
+
+
+function customerPdfRecords(collection, day, customerKey, kind, type, label) {
+  const byDay = db[collection] && db[collection][day];
+  const list = byDay && typeof byDay === 'object' && Array.isArray(byDay[customerKey]) ? byDay[customerKey] : [];
+  return list.map(item => ({
+    ...normalizePdfRecord(item, type.toLowerCase()),
+    kind,
+    type,
+    label,
+    sourceDateKey: day,
+    sourceCustomerKey: customerKey,
+    sourceCustomerName: cleanText(item && item.customerName, '')
+  })).filter(doc => doc && doc.fileName);
+}
+
+function supplierDocumentsForOrder(order) {
+  if (!order) return [];
+  const day = orderDayKey(order);
+  const customerKey = orderCustomerKey(order);
+  if (order.storage === 'KONSI') {
+    return [
+      ...customerPdfRecords('orderCustomerKonsiConfirmations', day, customerKey, 'CONFIRMATION', 'KONSI_AB', 'Konsi AB'),
+      ...customerPdfRecords('orderCustomerKonsiDeliveryNotes', day, customerKey, 'DELIVERY_NOTE', 'KONSI_LS', 'Konsi Lieferschein')
+    ];
+  }
+  return [
+    ...customerPdfRecords('orderCustomerConfirmations', day, customerKey, 'CONFIRMATION', 'AB', 'Auftragsbestätigung'),
+    ...customerPdfRecords('orderCustomerDeliveryNotes', day, customerKey, 'DELIVERY_NOTE', 'LS', 'Lieferschein')
+  ];
+}
+
+function findWriteOffSourceOrder(material) {
+  if (!material) return null;
+  const directId = cleanText(material.deliveredFromOrderId, '');
+  if (directId) {
+    const direct = (db.orders || []).find(order => order.id === directId);
+    if (direct) return direct;
+  }
+  const materialName = normalizeMaterialName(material.name || '').toLowerCase();
+  const thickness = normalizeThickness(material.thickness || '').toLowerCase();
+  const format = normalizeFormat(material.format || '');
+  const supplier = normalizeCustomerName(material.supplier || '').toLowerCase();
+  const candidates = (db.orders || []).filter(order => {
+    if (!order || order.status === 'ABGELEHNT') return false;
+    if (normalizeMaterialName(order.materialName || '').toLowerCase() !== materialName) return false;
+    if (normalizeThickness(order.materialThickness || '').toLowerCase() !== thickness) return false;
+    if (normalizeFormat(order.materialFormat || '') !== format) return false;
+    return true;
+  }).sort((a, b) => {
+    const supplierScoreA = supplier && orderCustomerName(a).toLowerCase() === supplier ? 1 : 0;
+    const supplierScoreB = supplier && orderCustomerName(b).toLowerCase() === supplier ? 1 : 0;
+    if (supplierScoreA !== supplierScoreB) return supplierScoreB - supplierScoreA;
+    return new Date((b.receivedAt || b.orderedAt || b.createdAt || b.lastUpdate || 0)) - new Date((a.receivedAt || a.orderedAt || a.createdAt || a.lastUpdate || 0));
+  });
+  return candidates[0] || null;
+}
+
+function normalizeWrittenOffDocument(raw, prefix = 'doc') {
+  const record = normalizePdfRecord(raw, prefix);
+  if (!record) return null;
+  return {
+    ...record,
+    kind: cleanText(raw && raw.kind, 'CONFIRMATION').toUpperCase(),
+    type: cleanText(raw && raw.type, prefix.toUpperCase()).toUpperCase(),
+    label: cleanText(raw && raw.label, prefix.toUpperCase()),
+    sourceDateKey: normalizeDateOnly(raw && raw.sourceDateKey, ''),
+    sourceCustomerKey: normalizeCustomerKey(raw && raw.sourceCustomerKey || ''),
+    sourceCustomerName: cleanText(raw && raw.sourceCustomerName, '')
+  };
+}
+
+function normalizeWrittenOffMaterial(raw, index = 0) {
+  const writtenOffAt = cleanText(raw && raw.writtenOffAt, nowIso());
+  return {
+    id: cleanText(raw && raw.id, uid('wo')),
+    materialId: cleanText(raw && raw.materialId, ''),
+    materialName: normalizeMaterialName(cleanText(raw && (raw.materialName || raw.name), `Material ${index + 1}`)),
+    materialThickness: normalizeThickness(raw && (raw.materialThickness || raw.thickness)),
+    materialFormat: normalizeFormat(raw && (raw.materialFormat || raw.format || '3000x1500')),
+    storage: normalizeStorage(raw && raw.storage, raw && raw.shelf),
+    shelf: normalizeShelf(raw && raw.shelf),
+    compartment: cleanText(raw && raw.compartment, ''),
+    supplier: normalizeCustomerName(raw && raw.supplier),
+    articleNumber: cleanText(raw && raw.articleNumber, ''),
+    quantityBefore: cleanText(raw && raw.quantityBefore, ''),
+    stockBefore: Math.max(0, numberOr(raw && raw.stockBefore, 0)),
+    sheetStockBefore: Math.max(0, numberOr(raw && raw.sheetStockBefore, 0)),
+    packageStockBefore: Math.max(0, numberOr(raw && raw.packageStockBefore, 0)),
+    packageNumbersBefore: normalizePackageNumbers(raw && raw.packageNumbersBefore),
+    kgPrice: raw && raw.kgPrice === undefined || raw && raw.kgPrice === null || raw && raw.kgPrice === '' ? null : Math.max(0, numberOr(raw && raw.kgPrice, 0)),
+    totalWeightKg: Math.max(0, numberOr(raw && raw.totalWeightKg, 0)),
+    totalPrice: Math.max(0, numberOr(raw && raw.totalPrice, 0)),
+    certificate: raw && raw.certificate && raw.certificate.fileName ? normalizePdfRecord(raw.certificate, 'wz') : null,
+    documents: Array.isArray(raw && raw.documents) ? raw.documents.map(item => normalizeWrittenOffDocument(item, 'doc')).filter(Boolean) : [],
+    sourceOrderId: cleanText(raw && raw.sourceOrderId, ''),
+    sourceDateKey: normalizeDateOnly(raw && raw.sourceDateKey, ''),
+    sourceCustomerKey: normalizeCustomerKey(raw && raw.sourceCustomerKey || ''),
+    sourceCustomerName: normalizeCustomerName(raw && raw.sourceCustomerName),
+    sourceStorage: normalizeStorage(raw && raw.sourceStorage, ''),
+    note: cleanText(raw && raw.note, ''),
+    writtenOffBy: cleanText(raw && raw.writtenOffBy, ''),
+    writtenOffByRole: normalizeRole(raw && raw.writtenOffByRole),
+    writtenOffAt
+  };
+}
+
+function writtenOffDocuments(entry) {
+  if (!entry) return [];
+  const docs = Array.isArray(entry.documents) ? entry.documents.map(item => normalizeWrittenOffDocument(item, 'doc')).filter(Boolean) : [];
+  let sourceOrder = null;
+  if (entry.sourceOrderId) sourceOrder = (db.orders || []).find(order => order.id === entry.sourceOrderId) || null;
+  if (sourceOrder) docs.push(...supplierDocumentsForOrder(sourceOrder));
+  else if (entry.sourceDateKey && entry.sourceCustomerKey) {
+    const fake = { storage: entry.sourceStorage || entry.storage, createdAt: `${entry.sourceDateKey}T12:00:00`, orderedAt: `${entry.sourceDateKey}T12:00:00`, supplierName: entry.sourceCustomerName, supplierKey: entry.sourceCustomerKey };
+    docs.push(...supplierDocumentsForOrder(fake));
+  }
+  const seen = new Set();
+  return docs.filter(doc => {
+    const key = `${doc.kind}|${doc.fileName || doc.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => String(a.type || '').localeCompare(String(b.type || ''), 'de') || new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0));
+}
+
+function buildWrittenOffMaterialEntry(material, quantityBefore, note, user) {
+  const sourceOrder = findWriteOffSourceOrder(material);
+  const docs = sourceOrder ? supplierDocumentsForOrder(sourceOrder) : [];
+  const totalWeightKg = Math.max(0, numberOr(material.lastPackageWeightKg, 0)) * Math.max(0, numberOr(material.deliveredPackageCount, material.packageStock));
+  const kgPrice = material.kgPrice === undefined || material.kgPrice === null || material.kgPrice === '' ? null : Math.max(0, numberOr(material.kgPrice, 0));
+  return normalizeWrittenOffMaterial({
+    id: uid('wo'),
+    materialId: material.id,
+    materialName: material.name,
+    materialThickness: material.thickness,
+    materialFormat: material.format,
+    storage: material.storage,
+    shelf: material.shelf,
+    compartment: material.compartment,
+    supplier: material.supplier || (sourceOrder ? orderCustomerName(sourceOrder) : ''),
+    articleNumber: material.articleNumber,
+    quantityBefore,
+    stockBefore: material.stock,
+    sheetStockBefore: material.sheetStock,
+    packageStockBefore: material.packageStock,
+    packageNumbersBefore: material.packageNumbers,
+    kgPrice,
+    totalWeightKg,
+    totalPrice: kgPrice !== null && totalWeightKg > 0 ? kgPrice * totalWeightKg : 0,
+    certificate: material.certificate || null,
+    documents: docs,
+    sourceOrderId: sourceOrder ? sourceOrder.id : '',
+    sourceDateKey: sourceOrder ? orderDayKey(sourceOrder) : '',
+    sourceCustomerKey: sourceOrder ? orderCustomerKey(sourceOrder) : '',
+    sourceCustomerName: sourceOrder ? orderCustomerName(sourceOrder) : '',
+    sourceStorage: sourceOrder ? sourceOrder.storage : material.storage,
+    note,
+    writtenOffBy: user.name,
+    writtenOffByRole: user.role,
+    writtenOffAt: nowIso()
+  });
+}
 
 function uploadDayDocument(req, res, options) {
   const day = normalizeDateOnly(req.params.date, '');
@@ -1082,7 +1245,7 @@ function normalizeSettings(raw = {}) {
 function defaultDb() {
   const created = nowIso();
   return {
-    version: 23,
+    version: 24,
     users: [
       { id: 'u_admin', username: 'admin', password: 'admin123', name: 'Systemzugang', role: 'ADMIN', active: true, mustChangePassword: false, createdAt: created, updatedAt: created, lastLogin: null },
       { id: 'u_laser', username: 'laser', password: 'laser123', name: 'Laser Arbeitsplatz', role: 'LASER', active: true, mustChangePassword: false, createdAt: created, updatedAt: created, lastLogin: null },
@@ -1092,6 +1255,7 @@ function defaultDb() {
     sessions: {},
     materials: [],
     orders: [],
+    writtenOffMaterials: [],
     orderDayConfirmations: {},
     orderDayDeliveryNotes: {},
     orderDayKonsiDocuments: {},
@@ -1306,6 +1470,7 @@ function migrateDb(db) {
   }
   if (repairMaterialQuantities(db.materials)) changed = true;
   if (!Array.isArray(db.orders)) { db.orders = []; changed = true; }
+  if (!Array.isArray(db.writtenOffMaterials)) { db.writtenOffMaterials = []; changed = true; }
   db.orders = db.orders.map(order => {
     const material = db.materials.find(m => m.id === order.materialId);
     const normalizedOrder = {
@@ -1361,12 +1526,14 @@ function migrateDb(db) {
   if (ensureOrderCustomerPdfCollection(db, 'orderCustomerKonsiConfirmations', 'konsi_ab')) changed = true;
   if (ensureOrderCustomerPdfCollection(db, 'orderCustomerKonsiDeliveryNotes', 'konsi_ls')) changed = true;
   if (ensureOrderCustomerPdfCollection(db, 'orderCustomerKonsiDocuments', 'konsi')) changed = true;
+  const normalizedWrittenOff = db.writtenOffMaterials.map(normalizeWrittenOffMaterial).filter(Boolean);
+  if (JSON.stringify(normalizedWrittenOff) !== JSON.stringify(db.writtenOffMaterials)) { db.writtenOffMaterials = normalizedWrittenOff; changed = true; }
   if (!Array.isArray(db.activities)) { db.activities = []; changed = true; }
   if (!Array.isArray(db.inventories)) { db.inventories = []; changed = true; }
   db.inventories = db.inventories.map(normalizeInventorySession).filter(Boolean);
   const normalizedSettings = normalizeSettings(db.settings || {});
   if (JSON.stringify(db.settings || {}) !== JSON.stringify(normalizedSettings)) { db.settings = normalizedSettings; changed = true; }
-  if (db.version !== 24) { db.version = 24; changed = true; }
+  if (db.version !== 25) { db.version = 25; changed = true; }
   if (changed) saveDb(db);
   return db;
 }
@@ -1976,6 +2143,17 @@ function redactOrderForUser(order, user) {
   return copy;
 }
 
+
+function redactWrittenOffForUser(entry, user) {
+  const copy = { ...entry, documents: writtenOffDocuments(entry).map(doc => ({ ...doc })) };
+  if (!userCanSeePrices(user)) {
+    delete copy.kgPrice;
+    delete copy.totalWeightKg;
+    delete copy.totalPrice;
+  }
+  return copy;
+}
+
 function redactInventoryForUser(session, user) {
   const copy = { ...session, items: Array.isArray(session.items) ? session.items.map(item => ({ ...item })) : [] };
   if (!userCanSeePrices(user)) {
@@ -2012,6 +2190,7 @@ function buildState(user) {
     konsiLocation: KONSI_LOCATION,
     lowMaterials,
     orders,
+    writtenOffMaterials: (db.writtenOffMaterials || []).map(entry => redactWrittenOffForUser(entry, user)),
     orderDayConfirmations: db.orderDayConfirmations || {},
     orderDayDeliveryNotes: db.orderDayDeliveryNotes || {},
     orderDayKonsiDocuments: db.orderDayKonsiDocuments || {},
@@ -2048,7 +2227,8 @@ function buildState(user) {
       canExportMaterials: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canManagePrices: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canCorrectIncoming: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
-      canDirectWriteOff: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role)
+      canDirectWriteOff: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
+      canViewWrittenOff: ['LASER', 'BUERO', 'CHEF', 'ADMIN'].includes(user.role)
     }
   };
 }
@@ -2565,6 +2745,30 @@ app.get('/api/materials/:id/certificate', requireAuth, allowRoles('LASER', 'BUER
   res.sendFile(filePath);
 });
 
+
+app.get('/api/written-off/:id/certificate', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const entry = (db.writtenOffMaterials || []).find(item => item.id === req.params.id);
+  if (!entry || !entry.certificate || !entry.certificate.fileName) return res.status(404).send('Werkszeugnis wurde nicht gefunden.');
+  const filePath = pdfPathForKind('CERTIFICATE', entry.certificate.fileName);
+  if (!filePath || !fs.existsSync(filePath)) return res.status(404).send('PDF-Datei fehlt im Datenordner.');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${safePdfFileName(entry.certificate.originalName)}"`);
+  res.sendFile(filePath);
+});
+
+app.get('/api/written-off/:id/documents/:fileId', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const entry = (db.writtenOffMaterials || []).find(item => item.id === req.params.id);
+  if (!entry) return res.status(404).send('Ausgebuchtes Material wurde nicht gefunden.');
+  const docs = writtenOffDocuments(entry);
+  const doc = docs.find(item => item.id === req.params.fileId || item.fileName === req.params.fileId);
+  if (!doc || !doc.fileName) return res.status(404).send('Dokument wurde nicht gefunden.');
+  const filePath = pdfPathForKind(doc.kind || 'CONFIRMATION', doc.fileName);
+  if (!filePath || !fs.existsSync(filePath)) return res.status(404).send('PDF-Datei fehlt im Datenordner.');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${safePdfFileName(doc.originalName)}"`);
+  res.sendFile(filePath);
+});
+
 app.post('/api/materials/:id/price', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
   const material = db.materials.find(m => m.id === req.params.id && !m.archived);
   if (!material) return res.status(404).json({ error: 'Material wurde nicht gefunden.' });
@@ -2591,6 +2795,9 @@ app.post('/api/materials/:id/write-off', requireAuth, allowRoles('BUERO', 'CHEF'
   if ((Number(material.stock) || 0) <= 0 && (Number(material.sheetStock) || 0) <= 0 && (Number(material.packageStock) || 0) <= 0 && !normalizePackageNumbers(material.packageNumbers).length) {
     return res.status(400).json({ error: 'Dieses Material ist bereits ausgebucht.' });
   }
+  const writtenOffEntry = buildWrittenOffMaterialEntry(material, beforeText, note, req.user);
+  if (!Array.isArray(db.writtenOffMaterials)) db.writtenOffMaterials = [];
+  db.writtenOffMaterials.unshift(writtenOffEntry);
   material.packageNumbers = [];
   material.packageStock = 0;
   material.sheetStock = 0;
@@ -2598,13 +2805,18 @@ app.post('/api/materials/:id/write-off', requireAuth, allowRoles('BUERO', 'CHEF'
   material.deliveredPackageCount = 0;
   material.deliveryPending = false;
   material.deliveryStatus = '';
-  material.updatedAt = nowIso();
+  material.archived = true;
+  material.archiveReason = 'AUSGEBUCHT';
+  material.archivedAt = writtenOffEntry.writtenOffAt;
+  material.archivedBy = req.user.name;
+  material.updatedAt = writtenOffEntry.writtenOffAt;
   const extra = note ? ` Hinweis: ${note}` : '';
-  const activity = addActivity('BESTAND', `${req.user.name} hat ${materialTitleText(material)} komplett ausgebucht (${beforeText} → 0).${extra}`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_WRITE_OFF', [beforeSnapshot], 'Komplett ausbuchen rückgängig') });
+  const docCount = writtenOffDocuments(writtenOffEntry).length;
+  const activity = addActivity('BESTAND', `${req.user.name} hat ${materialTitleText(material)} komplett ausgebucht (${beforeText} → 0) und in Ausgebucht abgelegt.${docCount ? ` ${docCount} Lieferanten-Dokument(e) wurden übernommen.` : ''}${extra}`, req.user, { materialId: material.id, writtenOffId: writtenOffEntry.id, undo: makeUndo('MATERIAL_WRITE_OFF', [beforeSnapshot], 'Komplett ausbuchen rückgängig') });
   saveDb();
-  emitToAll('material:changed', { material, activity, message: `Material komplett ausgebucht: ${materialTitleText(material)}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('material:changed', { material, writtenOffEntry, activity, message: `Material komplett ausgebucht: ${materialTitleText(material)}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('state:changed', { reason: 'material:write-off' });
-  res.json({ material, activity });
+  res.json({ material, writtenOffMaterial: redactWrittenOffForUser(writtenOffEntry, req.user), activity });
 });
 
 app.post('/api/materials/:id/stock', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN'), (req, res) => {
@@ -4089,11 +4301,12 @@ function clearOperationalDatabaseForAdmin(user, backup, counts = {}) {
   const preservedSettings = normalizeSettings(db.settings || defaultSettings());
   const created = nowIso();
   db = {
-    version: 23,
+    version: 24,
     users: preservedUsers,
     sessions: preservedSessions,
     materials: [],
     orders: [],
+    writtenOffMaterials: [],
     orderDayConfirmations: {},
     orderDayDeliveryNotes: {},
     orderDayKonsiDocuments: {},

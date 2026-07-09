@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '2.3';
+const CLIENT_VERSION = '2.4';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -12,6 +12,7 @@ let materialDrawTimer = null;
 let materialSearchComposing = false;
 let adminMaterialEditFilter = '';
 let orderFilter = { text: '', status: 'all' };
+let writtenOffFilter = { text: '' };
 let inventoryHistoryFilter = { text: '', date: '' };
 let withdrawalHistoryFilter = { text: '' };
 let lastTypingAt = 0;
@@ -33,6 +34,7 @@ const pages = [
   { id: 'konsi', label: 'Konsi-Lager', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'inventory', label: 'Inventur', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'orders', label: 'Bestellungen', roles: ['LASER','BUERO','CHEF','ADMIN'] },
+  { id: 'writtenOff', label: 'Ausgebucht', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'history', label: 'Historie', roles: ['LASER','BUERO','CHEF','ADMIN'] },
   { id: 'admin', label: 'Verwaltung', roles: ['ADMIN'] },
   { id: 'admin', label: 'Chef-Übersicht', roles: ['CHEF'] },
@@ -832,7 +834,8 @@ function renderNav() {
       const count = p.id === 'orders'
         ? (currentUser.role === 'LASER' ? myOpen : pendingForOffice)
         : (p.id === 'materials' ? warnings
-          : (p.id === 'konsi' ? state.materials.filter(m => m.storage === 'KONSI').length : 0));
+          : (p.id === 'konsi' ? state.materials.filter(m => m.storage === 'KONSI').length
+            : (p.id === 'writtenOff' ? ((state.writtenOffMaterials || []).length) : 0)));
       return `<button data-page="${p.id}" class="${activeMainPage === p.id ? 'active' : ''}">${p.label}${count ? `<span class="count">${count}</span>` : ''}</button>`;
     }).join('');
 
@@ -856,6 +859,7 @@ function renderCurrentPage() {
   if (currentPage === 'konsi') renderKonsi();
   if (currentPage === 'inventory') renderInventory();
   if (currentPage === 'orders') renderOrders();
+  if (currentPage === 'writtenOff') renderWrittenOff();
   if (currentPage === 'history') renderHistory();
   if (currentPage === 'admin') renderSystem();
   if (currentPage === 'adminMaterials') renderSystemMaterials();
@@ -876,6 +880,7 @@ function subtitleForPage(page) {
     konsi: 'Separater Überblick für Konsi-Materialien',
     inventory: 'Inventur starten, zählen, Differenzen prüfen und Bestände übernehmen',
     orders: 'Bestellung und Status-Rückmeldung',
+    writtenOff: 'Komplett ausgebuchte Materialien mit Werkszeugnis, AB und Lieferschein',
     history: 'Letzte Aktivitäten aller Arbeitsplätze',
     admin: currentUser.role === 'ADMIN' ? 'Verwaltung' : 'Gesamtübersicht für Chef',
     adminMaterials: 'Mehrere Materialien schnell hintereinander anlegen',
@@ -2268,6 +2273,94 @@ function renderOrderActions(order) {
   if (state.permissions.canReceiveDelivery && (order.status === 'BESTELLT' || order.status === 'TEILGELIEFERT')) actions.push(`<button class="primary mini" onclick="openReceiveModal('${jsString(order.id)}')">Lieferung annehmen</button>`);
   return `<div class="row-actions">${actions.join('') || '<span class="small muted">Keine Aktion</span>'}</div>`;
 }
+
+
+function writtenOffTitle(item) {
+  const name = String(item.materialName || item.name || '').trim() || 'Material';
+  const thickness = normalizeThicknessInput(item.materialThickness || item.thickness || '').trim();
+  if (!thickness) return name;
+  const lowerName = name.toLowerCase();
+  const lowerThickness = thickness.toLowerCase();
+  const numberOnly = lowerThickness.replace(/\s*mm$/i, '').trim();
+  if (lowerName.includes(lowerThickness) || (numberOnly && lowerName.includes(numberOnly + ' mm'))) return name;
+  return `${name} ${thickness}`;
+}
+
+function writtenOffSearchText(item) {
+  return [
+    writtenOffTitle(item), item.materialFormat, item.supplier, item.shelf, item.compartment, item.articleNumber,
+    item.quantityBefore, item.note, item.writtenOffBy, item.writtenOffAt ? fmtDate(item.writtenOffAt) : '',
+    item.sourceCustomerName, item.sourceDateKey,
+    ...(Array.isArray(item.documents) ? item.documents.map(doc => [doc.label, doc.originalName, doc.uploadedBy].join(' ')) : [])
+  ].join(' ').toLowerCase();
+}
+
+function filteredWrittenOffList() {
+  const text = String(writtenOffFilter.text || '').trim().toLowerCase();
+  return (state.writtenOffMaterials || [])
+    .filter(item => !text || searchMatches(writtenOffSearchText(item), text))
+    .sort((a, b) => new Date(b.writtenOffAt || 0) - new Date(a.writtenOffAt || 0));
+}
+
+function writtenOffDocumentButtons(item) {
+  const docs = Array.isArray(item.documents) ? item.documents : [];
+  if (!docs.length) return '<div class="small muted">Keine AB/Lieferschein-PDF übernommen.</div>';
+  return `<div class="written-off-docs">
+    ${docs.map(doc => `<button class="ghost mini" onclick="openWrittenOffDocument('${jsString(item.id)}','${jsString(doc.id || doc.fileName)}')">${escapeHtml(doc.label || doc.type || 'PDF')}</button>`).join('')}
+  </div>`;
+}
+
+function renderWrittenOffCard(item) {
+  const priceLine = canSeePrices() ? [
+    item.kgPrice !== undefined && item.kgPrice !== null && item.kgPrice !== '' ? `KG-Preis: ${formatKgPrice(item.kgPrice)}` : '',
+    Number(item.totalWeightKg) > 0 ? `Gewicht: ${String(Number(item.totalWeightKg).toFixed(1)).replace('.', ',')} kg` : '',
+    Number(item.totalPrice) > 0 ? `Wert: ${formatMoney(item.totalPrice)}` : ''
+  ].filter(Boolean).join(' · ') : '';
+  return `<div class="material-card written-off-card">
+    <div class="card-topline"><span class="badge gray">Ausgebucht</span><span>${escapeHtml(fmtDate(item.writtenOffAt))}</span></div>
+    <h3>${escapeHtml(writtenOffTitle(item))}</h3>
+    <div class="meta-grid">
+      <div><span>Format</span><strong>${escapeHtml(item.materialFormat || '-')}</strong></div>
+      <div><span>Vorher</span><strong>${escapeHtml(item.quantityBefore || `${item.stockBefore || 0}`)}</strong></div>
+      <div><span>Lieferant</span><strong>${escapeHtml(item.supplier || item.sourceCustomerName || 'Ohne Lieferant')}</strong></div>
+      <div><span>Ablage vorher</span><strong>${escapeHtml([item.shelf, item.compartment].filter(Boolean).join(' · ') || '-')}</strong></div>
+      ${item.articleNumber ? `<div><span>Teilenr.</span><strong>${escapeHtml(item.articleNumber)}</strong></div>` : ''}
+      ${priceLine ? `<div class="form-full"><span>Preis</span><strong>${escapeHtml(priceLine)}</strong></div>` : ''}
+    </div>
+    <div class="small muted">Ausgebucht von ${escapeHtml(item.writtenOffBy || '-')} · Quelle: ${escapeHtml(item.sourceCustomerName || item.supplier || 'Ohne Lieferant')}${item.sourceDateKey ? ` · ${escapeHtml(orderDayLabel(item.sourceDateKey))}` : ''}</div>
+    ${item.note ? `<div class="notice small">${escapeHtml(item.note)}</div>` : ''}
+    <div class="actions">
+      ${item.certificate ? `<button class="ghost mini" onclick="openWrittenOffCertificate('${jsString(item.id)}')">Werkszeugnis</button>` : '<span class="small muted">Kein Werkszeugnis</span>'}
+      ${writtenOffDocumentButtons(item)}
+    </div>
+  </div>`;
+}
+
+function renderWrittenOff() {
+  const all = state.writtenOffMaterials || [];
+  const filtered = filteredWrittenOffList();
+  $('#writtenOff').innerHTML = `
+    <div class="toolbar"><button class="secondary" onclick="loadState()">Aktualisieren</button></div>
+    <div class="filter-panel">
+      <div class="searchbar inline-search"><strong>Ausgebuchte Materialien suchen</strong><input id="writtenOffSearch" placeholder="Material, Lieferant, Datum, AB oder Lieferschein suchen ..." value="${escapeHtml(writtenOffFilter.text)}"></div>
+      <div class="filter-summary"><span>${filtered.length} von ${all.length} ausgebuchten Materialkarten</span><button class="ghost mini" onclick="writtenOffFilter.text=''; renderWrittenOff();">Filter zurücksetzen</button></div>
+    </div>
+    <div class="card">
+      <h2>Ausgebuchte Materialien</h2>
+      ${filtered.length ? `<div class="material-grid">${filtered.map(renderWrittenOffCard).join('')}</div>` : '<div class="empty">Noch kein komplett ausgebuchtes Material vorhanden.</div>'}
+    </div>`;
+  $('#writtenOffSearch').addEventListener('input', (event) => { writtenOffFilter.text = event.target.value; renderWrittenOff(); });
+}
+
+window.openWrittenOffCertificate = (id) => {
+  if (!token) return showToast('Nicht angemeldet', 'Bitte neu anmelden.');
+  window.open(`/api/written-off/${encodeURIComponent(id)}/certificate?token=${encodeURIComponent(token)}`, '_blank');
+};
+
+window.openWrittenOffDocument = (id, fileId) => {
+  if (!token) return showToast('Nicht angemeldet', 'Bitte neu anmelden.');
+  window.open(`/api/written-off/${encodeURIComponent(id)}/documents/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`, '_blank');
+};
 
 
 window.openOrderCustomerConfirmation = (dateKey, customerKey, fileId) => {

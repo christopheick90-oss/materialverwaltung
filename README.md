@@ -1,9 +1,5 @@
-# Eckl Eco Technics - Materialverwaltung V2.3
+# Eckl Lagerverwaltung v2.4
 
-## Wichtig in v2.3
-- Lieferanten-Suche in Bestellungen fasst Treffer lieferantenweise zusammen.
-- In der Lieferanten-Suche steht das Datum direkt vor dem Material.
-- Lieferung / Wareneingang kann von Büro, Chef und Admin rückgängig gemacht werden.
-- Die Bestellung bleibt danach offen stehen und springt zurück auf Bestellt.
-- Büro, Chef und Admin können Material komplett ausbuchen, wenn es direkt weitergeht.
-- Master-Design bleibt unverändert.
+Änderung: Neuer Reiter „Ausgebucht“ für komplett ausgebuchte Materialien. Beim Ausbuchen wird das Material aus der aktiven Materialliste genommen und als Materialkarte im Reiter „Ausgebucht“ abgelegt. Werkszeugnis sowie vorhandene AB- und Lieferschein-PDFs vom passenden Lieferanten/Datum werden übernommen und bleiben dort abrufbar.
+
+Master-Design bleibt unverändert.

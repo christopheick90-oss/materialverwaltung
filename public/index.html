@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Eckl Eco Technics - Materialverwaltung</title>
-  <link rel="stylesheet" href="/styles.css?v=2.3">
+  <link rel="stylesheet" href="/styles.css?v=2.4">
 </head>
 <body>
   <div id="loginScreen" class="login-screen">
@@ -37,7 +37,7 @@
         <label>Angemeldet als</label>
         <div class="profile-name" id="profileName">-</div>
         <div id="roleBadge" class="role-badge">-</div>
-        <div id="appVersion" class="version-badge">Version 2.3</div>
+        <div id="appVersion" class="version-badge">Version 2.4</div>
         <div id="serverModeBadge" class="version-badge server-mode-badge">Server: -</div>
         <div class="connection"><span id="connectionDot" class="dot"></span><span id="connectionText">Verbinde...</span></div>
         <button class="ghost logout" id="logoutBtn">Abmelden</button>
@@ -64,6 +64,7 @@
       <section id="konsi" class="section"></section>
       <section id="inventory" class="section"></section>
       <section id="orders" class="section"></section>
+      <section id="writtenOff" class="section"></section>
       <section id="history" class="section"></section>
       <section id="admin" class="section"></section>
       <section id="adminMaterials" class="section"></section>
@@ -80,6 +81,6 @@
   <div id="modal" class="modal-bg"><div class="modal" id="modalInner"></div></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=2.3"></script>
+  <script src="/app.js?v=2.4"></script>
 </body>
 </html>

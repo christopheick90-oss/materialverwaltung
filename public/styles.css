@@ -301,3 +301,10 @@ button.active-filter{background:#222!important;color:#fff!important;border-color
 .order-subgroup-title{margin:12px 0 8px;padding:9px 12px;border-left:5px solid var(--red);background:#f4f4f4;font-weight:900;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .order-subgroup-title.konsi{background:#fff7f7}
 .order-subgroup-title .row-actions{margin-left:auto}
+
+/* V2.4: Reiter Ausgebucht */
+.material-card.written-off-card{border-left-color:#222;background:linear-gradient(180deg,#fff,#fafafa)}
+.written-off-card .card-topline{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px;color:#666;font-weight:900;font-size:12px}
+.written-off-card .notice{margin-top:10px}
+.written-off-docs{display:flex;gap:6px;flex-wrap:wrap}
+.written-off-card .actions{align-items:center}
