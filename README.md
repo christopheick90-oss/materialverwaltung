@@ -1,16 +1,18 @@
-# Eckl Lagerverwaltung v2.8
+# Eckl Lagerverwaltung v2.9
 
-Änderung: Materialkarten und Ausgebucht-Karten wurden lesbarer gemacht. Lange Materialnamen, Lieferanten, Formate, Teilenummern, Preise und PDF-Namen brechen jetzt sauber um und stehen nicht mehr über andere Inhalte.
+Änderung: Der Material-CSV-Export wurde wieder auf das Wesentliche reduziert.
 
-Zusätzlich enthält der Material-CSV-Export jetzt den KG-Preis. Der Export bleibt nur für Büro/Chef/Admin verfügbar.
+Exportiert werden nur noch:
+- Material
+- Bestand
+- KG-Preis €/kg
+
+Der Export bleibt nur für Büro/Chef/Admin verfügbar. Laser sieht weiterhin keine KG-Preise.
 
 Master-Design bleibt unverändert.
 
-### v2.8
-- Materialkarten besser lesbar, kein Abschneiden/Überlagern langer Werte.
-- Ausgebucht-Karten besser lesbar, inklusive PDF-Dokumentnamen und Quelle.
-- Materialliste CSV enthält jetzt „KG-Preis €/kg“.
-
-
-### v2.8 CSV-Export
-Der Material-CSV-Export wurde sauber strukturiert: Kopfbereich, klare Spaltenreihenfolge, Excel-Trennzeichen `sep=;`, KG-Preis, berechnetes Gewicht und Warenwert.
+### v2.9 CSV-Export
+- Keine großen Kopfbereiche mehr.
+- Keine Zusatzspalten mehr.
+- Excel-Trennzeichen `sep=;` bleibt erhalten, damit Excel die Spalten sauber trennt.
+- Material enthält Materialname und Stärke, damit die Zeile eindeutig bleibt.

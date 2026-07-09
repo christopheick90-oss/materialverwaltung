@@ -1,3 +1,5 @@
-# Render Deployment v2.8
+# Render Deployment v2.9
 
-ZIP hochladen oder Repository aktualisieren. Version v2.8 enthält lesbare Material-/Ausgebucht-Karten und den KG-Preis im Material-CSV-Export.
+ZIP hochladen oder Repository aktualisieren.
+
+Version v2.9 reduziert den Material-CSV-Export auf Material, Bestand und KG-Preis.

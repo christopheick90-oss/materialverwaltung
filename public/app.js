@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '2.8';
+const CLIENT_VERSION = '2.9';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -1069,7 +1069,7 @@ function renderMaterials() {
     <div class="toolbar">
       ${canCreate ? '<button class="primary" onclick="openMaterialModal()">Material anlegen</button>' : ''}
       ${canTableImport ? '<button class="secondary" onclick="openPasteTableModal()">Tabelle einfügen</button>' : ''}
-      ${canExportMaterials ? '<button class="secondary" onclick="exportVisibleMaterialsCsv()">Materialliste CSV sauber</button>' : ''}
+      ${canExportMaterials ? '<button class="secondary" onclick="exportVisibleMaterialsCsv()">Materialliste CSV</button>' : ''}
       ${state.permissions.canRequestOrder ? '<button class="secondary" onclick="openOrderModal()">Bestellung angeben</button>' : ''}
       <span class="badge red">Regale: 1-6 · Carport · Bodenhaltung</span><span class="badge gray">Konsi: Garage</span>
     </div>
@@ -3142,7 +3142,7 @@ function renderSystemImportExport() {
   $('#adminImportExport').innerHTML = `
     ${renderSystemSubnav('adminImportExport')}
     <div class="split">
-      <div class="card"><h2>Materialliste exportieren</h2><p class="muted">Exportiert die Materialliste als sauber formatierte Excel-CSV mit Kopfbereich, klarer Spaltenreihenfolge und KG-Preis.</p><button class="primary" onclick="exportMaterialsCsv()">CSV exportieren</button></div>
+      <div class="card"><h2>Materialliste exportieren</h2><p class="muted">Exportiert die Materialliste als kurze Excel-CSV mit Material, Bestand und KG-Preis.</p><button class="primary" onclick="exportMaterialsCsv()">CSV exportieren</button></div>
       <div class="card"><h2>CSV / Google Sheets importieren</h2><p class="muted">Büro-Format: Regal; Material; t=; Format; Menge; Abmass X; Abmass Y. Wird automatisch in die Material-Anordnung übernommen. Google-Sheets-Kopien mit Tabulatoren werden erkannt.</p><textarea id="importCsv" placeholder="CSV oder aus Google Sheets kopierte Tabelle hier einfügen"></textarea><div class="modal-footer"><button class="primary" onclick="importMaterialsCsv()">Materialien importieren</button></div></div>
     </div>
     <div class="card"><h2>CSV Vorlage</h2><pre class="code-block">Material;Stärke;Größe;Regal;Tafeln;Pakete;Mindestbestand;Bereich;Resttafel;Paketnummern
