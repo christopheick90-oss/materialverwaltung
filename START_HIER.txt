@@ -1,6 +1,6 @@
-V0.9.8 Werkstoffnummern und Entnahme-Suche
+V1.2 Verräumen mit Carport und Bodenhaltung als Zwischenlager
 
-Zum lokalen Testen:
-1. 0_NODEJS_PRUEFEN.bat
-2. 1_PAKETE_INSTALLIEREN.bat
-3. 3_BROWSER_SERVER_TESTEN.bat
+Start:
+1. ZIP entpacken
+2. 3_BROWSER_SERVER_TESTEN.bat starten
+3. Im Browser anmelden

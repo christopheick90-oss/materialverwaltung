@@ -94,9 +94,19 @@ function smartTitleWord(value) {
 }
 
 function normalizeMaterialNumber(value) {
-  return String(value || '')
+  let text = String(value || '');
+  const knownCompact = {
+    '14301': '1.4301', '4301': '1.4301',
+    '14404': '1.4404', '4404': '1.4404',
+    '14571': '1.4571', '4571': '1.4571',
+    '14541': '1.4541', '4541': '1.4541',
+    '14016': '1.4016', '4016': '1.4016'
+  };
+  text = text
     .replace(/\b([1-9])\s*[,\.]\s*(\d{4})\b/g, '$1.$2')
-    .replace(/\b1\s*(\d{4})\b/g, '1.$1');
+    .replace(/\b1[\s.,-]*(\d{4})\b/g, '1.$1');
+  text = text.replace(/(^|[^0-9.,])(1?4(?:301|404|571|541|016))(?=$|[^0-9.,])/g, (match, prefix, code) => `${prefix}${knownCompact[code] || code}`);
+  return text;
 }
 
 function normalizeMaterialName(value) {
@@ -190,7 +200,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '0.9.8';
+const PROGRAM_VERSION = '1.2';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -312,11 +322,13 @@ function quantityText(material) {
 }
 
 function orderQuantityText(order, type = 'request') {
-  const amount = type === 'ordered' ? order.orderedAmount : (type === 'received' ? order.receivedAmount : order.requestedAmount);
-  const sheets = type === 'ordered' ? order.orderedSheets : (type === 'received' ? order.receivedSheets : order.requestedSheets);
+  const amount = Number(type === 'ordered' ? order.orderedAmount : (type === 'received' ? order.receivedAmount : order.requestedAmount)) || 0;
+  const sheets = Number(type === 'ordered' ? order.orderedSheets : (type === 'received' ? order.receivedSheets : order.requestedSheets)) || 0;
   if (order.storage === 'KONSI') return `${amount || 0} Pakete`;
-  if (type === 'received' && Number(amount) > 0 && Number(sheets) > 0) return `${amount || 0} Pakete = ${Number(sheets)} Tafeln`;
-  return `${amount || 0} Pakete${Number(sheets) ? ` + ${Number(sheets)} Tafeln` : ''}`;
+  if (type === 'received' && amount > 0 && sheets > 0) return `${amount} Pakete = ${sheets} Tafeln`;
+  if (amount > 0 && sheets > 0) return `${amount} Pakete + ${sheets} Tafeln`;
+  if (sheets > 0) return `${sheets} Tafeln`;
+  return `${amount || 0} Pakete`;
 }
 
 
@@ -936,6 +948,7 @@ function migrateDb(db) {
       deliveredToShelf: '',
       deliveries: [],
       lastPackageWeightKg: null,
+      manualOrder: false,
       storage: material ? material.storage : 'HAUPTLAGER',
       ...order
     };
@@ -1532,7 +1545,7 @@ function buildState(user) {
     backups: user.role === 'ADMIN' ? listBackups() : [],
     systemStatus: user.role === 'ADMIN' ? systemStatus() : null,
     permissions: {
-      canRequestOrder: ['LASER', 'BUERO', 'CHEF'].includes(user.role),
+      canRequestOrder: ['LASER', 'BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canApproveOrder: false,
       canMarkOrdered: ['BUERO', 'CHEF'].includes(user.role),
       canReceiveDelivery: ['LASER', 'BUERO', 'CHEF', 'ADMIN'].includes(user.role),
@@ -1958,7 +1971,9 @@ app.post('/api/materials/:id/move', requireAuth, allowRoles('LASER', 'BUERO', 'C
   const targetShelf = normalizeShelf(req.body.targetShelf);
   const note = cleanText(req.body.note, '');
   if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'Bitte eine gültige Tafel-Anzahl eingeben.' });
-  if (!isTargetRegal(targetShelf)) return res.status(400).json({ error: 'Bitte Regal 1 bis Regal 6 als Ziel auswählen.' });
+  if (!isTargetRegal(targetShelf) && !isOverflowShelf(targetShelf)) return res.status(400).json({ error: 'Bitte Regal 1 bis Regal 6, Carport oder Bodenhaltung als Ziel auswählen.' });
+  if (normalizeShelf(material.shelf) === targetShelf) return res.status(400).json({ error: 'Bitte einen anderen Ziel-Lagerplatz auswählen.' });
+  const targetKeepsMoveOpen = isOverflowShelf(targetShelf);
 
   const beforeSourceSnapshot = materialSnapshotById(material.id);
   const beforeSourceSheets = Math.max(0, numberOr(material.sheetStock, numberOr(material.stock, 0)));
@@ -1980,8 +1995,8 @@ app.post('/api/materials/:id/move', requireAuth, allowRoles('LASER', 'BUERO', 'C
       packageStock: 0,
       sheetStock: qty,
       packageNumbers: [],
-      deliveryPending: false,
-      deliveryStatus: '',
+      deliveryPending: targetKeepsMoveOpen,
+      deliveryStatus: targetKeepsMoveOpen ? 'GELIEFERT' : '',
       deliveredAt: null,
       deliveredBy: '',
       deliveredFromOrderId: '',
@@ -1994,8 +2009,8 @@ app.post('/api/materials/:id/move', requireAuth, allowRoles('LASER', 'BUERO', 'C
     target.stock = qty;
     target.packageStock = 0;
     target.sheetStock = qty;
-    target.deliveryPending = false;
-    target.deliveryStatus = '';
+    target.deliveryPending = targetKeepsMoveOpen;
+    target.deliveryStatus = targetKeepsMoveOpen ? 'GELIEFERT' : '';
     target.deliveredAt = null;
     target.deliveredBy = '';
     target.deliveredFromOrderId = '';
@@ -2005,8 +2020,8 @@ app.post('/api/materials/:id/move', requireAuth, allowRoles('LASER', 'BUERO', 'C
     const targetSheets = Math.max(0, numberOr(target.sheetStock, numberOr(target.stock, 0)));
     target.sheetStock = targetSheets + qty;
     target.stock = Math.max(0, numberOr(target.packageStock, 0)) + target.sheetStock;
-    target.deliveryPending = false;
-    target.deliveryStatus = '';
+    target.deliveryPending = targetKeepsMoveOpen;
+    target.deliveryStatus = targetKeepsMoveOpen ? 'GELIEFERT' : '';
     target.deliveredAt = null;
     target.deliveredBy = '';
     target.deliveredFromOrderId = '';
@@ -2016,16 +2031,19 @@ app.post('/api/materials/:id/move', requireAuth, allowRoles('LASER', 'BUERO', 'C
 
   material.sheetStock = Math.max(0, beforeSourceSheets - qty);
   material.stock = beforeSourcePackages + material.sheetStock;
+  material.deliveryPending = material.stock > 0 && isOverflowShelf(material.shelf);
+  material.deliveryStatus = material.deliveryPending ? 'GELIEFERT' : '';
   material.updatedAt = nowIso();
   const sourceEmpty = material.stock <= 0;
   if (sourceEmpty) material.archived = true;
 
   const extra = note ? ` Hinweis: ${note}` : '';
   const deletedText = sourceEmpty ? ' Die ursprüngliche Position wurde entfernt, weil dort keine Tafeln mehr liegen.' : '';
+  const pendingText = targetKeepsMoveOpen ? ' Die Position bleibt im Verräumen, bis sie einem Regal zugeordnet wird.' : '';
   const targetSnapshot = beforeTargetSnapshot || { id: target.id, existed: false, material: null };
-  const activity = addActivity('BESTAND', `${req.user.name} hat ${qty} Tafel(n) ${materialTitleText(material)} von ${sourceShelf} nach ${targetShelf} verräumt.${deletedText}${extra}`, req.user, { materialId: material.id, materialIds: [material.id, target.id], undo: makeUndo('MATERIAL_MOVE', [beforeSourceSnapshot, targetSnapshot], 'Verräumen rückgängig') });
+  const activity = addActivity('BESTAND', `${req.user.name} hat ${qty} Tafel(n) ${materialTitleText(material)} von ${sourceShelf} nach ${targetShelf} verräumt.${pendingText}${deletedText}${extra}`, req.user, { materialId: material.id, materialIds: [material.id, target.id], undo: makeUndo('MATERIAL_MOVE', [beforeSourceSnapshot, targetSnapshot], 'Verräumen rückgängig') });
   saveDb();
-  emitToAll('material:changed', { material: target, activity, message: `${qty} Tafel(n) verräumt: ${sourceShelf} → ${targetShelf}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('material:changed', { material: target, activity, message: targetKeepsMoveOpen ? `${qty} Tafel(n) zwischengelagert: ${sourceShelf} → ${targetShelf}` : `${qty} Tafel(n) verräumt: ${sourceShelf} → ${targetShelf}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('state:changed', { reason: 'material:move' });
   res.json({ source: material, target, sourceBefore: sourceBeforeText, sourceAfter: quantityText(material) });
 });
@@ -2395,35 +2413,56 @@ app.post('/api/inventories/:id/close', requireAuth, allowRoles('BUERO', 'CHEF'),
     : `${req.user.name} hat die Inventur ${inventoryAreaLabel(session.area)} abgeschlossen. ${changedCount} Bestand/Bestände angepasst.`;
   const activity = addActivity('INVENTUR', activityText, req.user, { materialIds: session.items.map(item => item.materialId).filter(Boolean) });
   saveDb();
-  emitToAll('inventory:changed', { session, activity, message: `Inventur abgeschlossen: ${inventoryAreaLabel(session.area)}`, targetRoles: ['LASER', 'BUERO', 'CHEF'] });
+  emitToAll('inventory:changed', { session, activity, message: `Inventur abgeschlossen: ${inventoryAreaLabel(session.area)}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('material:changed', { activity, message: `Inventur übernommen: ${inventoryAreaLabel(session.area)}`, targetRoles: ['LASER', 'BUERO', 'CHEF'] });
   emitToAll('state:changed', { reason: 'inventory:closed' });
   res.json({ session, changedCount });
 });
 
-app.post('/api/orders', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF'), (req, res) => {
-  const materialId = String(req.body.materialId || '').trim();
-  const material = db.materials.find(m => m.id === materialId && !m.archived);
-  if (!material) return res.status(400).json({ error: 'Material wurde nicht gefunden.' });
-  if (material.rest) return res.status(400).json({ error: 'Resttafeln können nicht bestellt werden.' });
+app.post('/api/orders', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const materialId = cleanText(req.body.materialId, '');
+  const material = materialId ? db.materials.find(m => m.id === materialId && !m.archived) : null;
+  const manualRequest = !material;
+  let materialName = '';
+  let materialThickness = '';
+  let materialFormat = '';
+  let storage = 'HAUPTLAGER';
+
+  if (material) {
+    if (material.rest) return res.status(400).json({ error: 'Resttafeln können nicht bestellt werden.' });
+    materialName = material.name;
+    materialThickness = material.thickness || '';
+    materialFormat = material.format || '';
+    storage = material.storage || 'HAUPTLAGER';
+  } else {
+    materialName = normalizeMaterialName(cleanText(req.body.name, ''));
+    materialThickness = normalizeThickness(req.body.thickness);
+    materialFormat = '';
+    storage = 'HAUPTLAGER';
+    if (!materialName) return res.status(400).json({ error: 'Bitte Material eintragen.' });
+    if (!materialThickness) return res.status(400).json({ error: 'Bitte Stärke eintragen.' });
+  }
+
   const amount = Number(req.body.amount || 0);
   const sheets = Number(req.body.sheets || 0);
-  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Bitte eine gültige Bestellmenge eingeben.' });
-  if (!Number.isFinite(sheets) || sheets < 0) return res.status(400).json({ error: 'Bitte eine gültige Tafel-Angabe eingeben.' });
+  if ((!Number.isFinite(amount) || amount < 0) || (!Number.isFinite(sheets) || sheets < 0) || (amount <= 0 && sheets <= 0)) {
+    return res.status(400).json({ error: 'Bitte eine gültige Menge eingeben.' });
+  }
+  if (storage === 'KONSI' && sheets > 0) return res.status(400).json({ error: 'Konsi-Bestellungen bitte als Paket erfassen.' });
 
   const order = {
     id: uid('o'),
-    materialId: material.id,
-    materialName: material.name,
-    materialFormat: material.format || '',
-    materialThickness: material.thickness || '',
-    storage: material.storage,
-    requestedAmount: amount,
-    requestedSheets: material.storage === 'KONSI' ? 0 : sheets,
+    materialId: material ? material.id : '',
+    materialName,
+    materialFormat,
+    materialThickness,
+    storage,
+    requestedAmount: storage === 'KONSI' ? amount : amount,
+    requestedSheets: storage === 'KONSI' ? 0 : sheets,
     orderedAmount: null,
     orderedSheets: 0,
     status: 'ANGEFORDERT',
-    note: String(req.body.note || '').trim(),
+    note: cleanText(req.body.note, ''),
     requestedBy: req.user.name,
     requestedByRole: req.user.role,
     createdAt: nowIso(),
@@ -2437,16 +2476,74 @@ app.post('/api/orders', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF'), (req,
     receivedAt: null,
     deliveredToShelf: '',
     deliveries: [],
+    manualRequest,
+    freeMaterial: manualRequest,
+    quantityUnit: cleanText(req.body.unit, amount > 0 ? 'PAKET' : 'TAFEL').toUpperCase() === 'TAFEL' ? 'TAFEL' : 'PAKET',
     doneBy: null,
     doneAt: null,
     lastUpdate: nowIso()
   };
   db.orders.unshift(order);
-  const activity = addActivity('BESTELLUNG', `${req.user.name} hat ${orderQuantityText(order, 'request')} ${materialTitleText(material)} als Bestellung angefordert.`, req.user, { materialId: material.id, orderId: order.id });
+  const activityExtra = { orderId: order.id };
+  if (material) activityExtra.materialId = material.id;
+  const activity = addActivity('BESTELLUNG', `${req.user.name} hat ${orderQuantityText(order, 'request')} ${materialTitleText({ name: materialName, thickness: materialThickness })} als Bestellung angefordert${manualRequest ? ' (Handeingabe)' : ''}.`, req.user, activityExtra);
   saveDb();
 
-  emitToAll('order:new', { order, activity, message: `Neue Bestellanforderung: ${material.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF'] });
+  emitToAll('order:new', { order, activity, message: `Neue Bestellanforderung: ${materialName}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('state:changed', { reason: 'order:new' });
+  res.status(201).json({ order });
+});
+
+
+
+app.post('/api/orders/manual', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const materialId = String(req.body.materialId || '').trim();
+  const material = db.materials.find(m => m.id === materialId && !m.archived);
+  if (!material) return res.status(400).json({ error: 'Material wurde nicht gefunden.' });
+  if (material.rest) return res.status(400).json({ error: 'Resttafeln können nicht bestellt werden.' });
+  const amount = Number(req.body.amount || 0);
+  const sheets = Number(req.body.sheets || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Bitte eine gültige Bestellmenge eingeben.' });
+  if (!Number.isFinite(sheets) || sheets < 0) return res.status(400).json({ error: 'Bitte eine gültige Tafel-Angabe eingeben.' });
+
+  const createdAt = nowIso();
+  const order = {
+    id: uid('o'),
+    materialId: material.id,
+    materialName: material.name,
+    materialFormat: material.format || '',
+    materialThickness: material.thickness || '',
+    storage: material.storage,
+    requestedAmount: amount,
+    requestedSheets: material.storage === 'KONSI' ? 0 : sheets,
+    orderedAmount: amount,
+    orderedSheets: material.storage === 'KONSI' ? 0 : sheets,
+    status: 'BESTELLT',
+    note: cleanText(req.body.note, ''),
+    requestedBy: req.user.name,
+    requestedByRole: req.user.role,
+    createdAt,
+    approvedBy: null,
+    approvedAt: null,
+    orderedBy: req.user.name,
+    orderedAt: createdAt,
+    receivedAmount: 0,
+    receivedSheets: 0,
+    receivedBy: null,
+    receivedAt: null,
+    deliveredToShelf: '',
+    deliveries: [],
+    manualOrder: true,
+    doneBy: null,
+    doneAt: null,
+    lastUpdate: createdAt
+  };
+  db.orders.unshift(order);
+  const activity = addActivity('BESTELLUNG', `${req.user.name} hat ${orderQuantityText(order, 'ordered')} ${materialTitleText(material)} per Handeingabe als bestellt erfasst.`, req.user, { materialId: material.id, orderId: order.id });
+  saveDb();
+
+  emitToAll('order:new', { order, activity, message: `Bestellung per Handeingabe: ${material.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('state:changed', { reason: 'order:manual' });
   res.status(201).json({ order });
 });
 
@@ -2460,13 +2557,16 @@ app.patch('/api/orders/:id', requireAuth, allowRoles('BUERO', 'CHEF'), (req, res
   const changedAt = nowIso();
 
   if (action === 'ORDERED') {
-    if (amount !== null && (!Number.isFinite(amount) || amount <= 0)) return res.status(400).json({ error: 'Bitte eine gültige bestellte Menge eingeben.' });
-    if (!Number.isFinite(sheets) || sheets < 0) return res.status(400).json({ error: 'Bitte eine gültige Tafel-Angabe eingeben.' });
+    const normalizedAmount = amount === null ? Math.max(0, numberOr(order.requestedAmount, 0)) : Math.max(0, numberOr(amount, 0));
+    const normalizedSheets = order.storage === 'KONSI' ? 0 : Math.max(0, numberOr(sheets, 0));
+    if (!Number.isFinite(normalizedAmount) || !Number.isFinite(normalizedSheets)) return res.status(400).json({ error: 'Bitte eine gültige bestellte Menge eingeben.' });
+    if (order.storage === 'KONSI' && normalizedAmount <= 0) return res.status(400).json({ error: 'Bitte eine gültige Paketmenge eingeben.' });
+    if (order.storage !== 'KONSI' && normalizedAmount <= 0 && normalizedSheets <= 0) return res.status(400).json({ error: 'Bitte bestellte Pakete oder Tafeln eintragen.' });
     order.status = 'BESTELLT';
     order.orderedBy = req.user.name;
     order.orderedAt = changedAt;
-    order.orderedAmount = amount || order.requestedAmount;
-    order.orderedSheets = order.storage === 'KONSI' ? 0 : sheets;
+    order.orderedAmount = normalizedAmount;
+    order.orderedSheets = normalizedSheets;
     if (note) order.note = note;
   } else if (action === 'REJECT') {
     order.status = 'ABGELEHNT';
@@ -2489,7 +2589,7 @@ app.patch('/api/orders/:id', requireAuth, allowRoles('BUERO', 'CHEF'), (req, res
   const activity = addActivity('STATUS', statusText, req.user, { orderId: order.id, materialId: order.materialId });
   saveDb();
 
-  emitToAll('order:updated', { order, activity, message: statusText, targetRoles: ['LASER', 'BUERO', 'CHEF'] });
+  emitToAll('order:updated', { order, activity, message: statusText, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('state:changed', { reason: 'order:updated' });
   res.json({ order });
 });
@@ -2509,6 +2609,7 @@ function deliveryTargetKey(material, targetShelf) {
 function findOrCreateDeliveryTarget(sourceMaterial, targetShelf, packages, sheets, meta = {}) {
   const shelf = normalizeShelf(targetShelf || 'Carport');
   const key = deliveryTargetKey(sourceMaterial, shelf);
+  const keepsMoveOpen = isOverflowShelf(shelf);
   const deliveredAt = meta.deliveredAt || nowIso();
   const deliveredBy = cleanText(meta.deliveredBy, '');
   const deliveredFromOrderId = cleanText(meta.deliveredFromOrderId, '');
@@ -2523,8 +2624,8 @@ function findOrCreateDeliveryTarget(sourceMaterial, targetShelf, packages, sheet
       packageStock: 0,
       sheetStock: sheets,
       packageNumbers: [],
-      deliveryPending: true,
-      deliveryStatus: 'GELIEFERT',
+      deliveryPending: keepsMoveOpen,
+      deliveryStatus: keepsMoveOpen ? 'GELIEFERT' : '',
       deliveredAt,
       deliveredBy,
       deliveredFromOrderId,
@@ -2538,8 +2639,8 @@ function findOrCreateDeliveryTarget(sourceMaterial, targetShelf, packages, sheet
     target.packageStock = 0;
     target.sheetStock = sheets;
     target.stock = sheets;
-    target.deliveryPending = true;
-    target.deliveryStatus = 'GELIEFERT';
+    target.deliveryPending = keepsMoveOpen;
+    target.deliveryStatus = keepsMoveOpen ? 'GELIEFERT' : '';
     target.deliveredAt = deliveredAt;
     target.deliveredBy = deliveredBy;
     target.deliveredFromOrderId = deliveredFromOrderId;
@@ -2552,8 +2653,8 @@ function findOrCreateDeliveryTarget(sourceMaterial, targetShelf, packages, sheet
     target.packageStock = 0;
     target.sheetStock = Math.max(0, numberOr(target.sheetStock, numberOr(target.stock, 0))) + sheets;
     target.stock = target.sheetStock;
-    target.deliveryPending = true;
-    target.deliveryStatus = 'GELIEFERT';
+    target.deliveryPending = keepsMoveOpen;
+    target.deliveryStatus = keepsMoveOpen ? 'GELIEFERT' : '';
     target.deliveredAt = deliveredAt;
     target.deliveredBy = deliveredBy;
     target.deliveredFromOrderId = deliveredFromOrderId;
@@ -2563,14 +2664,31 @@ function findOrCreateDeliveryTarget(sourceMaterial, targetShelf, packages, sheet
   return target;
 }
 
-app.post('/api/orders/:id/receive', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF'), (req, res) => {
+app.post('/api/orders/:id/receive', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN'), (req, res) => {
   const order = db.orders.find(o => o.id === req.params.id);
   if (!order) return res.status(404).json({ error: 'Bestellung wurde nicht gefunden.' });
   if (!['BESTELLT', 'TEILGELIEFERT'].includes(order.status)) return res.status(400).json({ error: 'Wareneingang ist erst möglich, wenn die Bestellung als bestellt markiert wurde.' });
-  const material = db.materials.find(m => m.id === order.materialId && !m.archived);
+  let material = db.materials.find(m => m.id === order.materialId && !m.archived);
+  const virtualOrderMaterial = !material && Boolean(order.freeMaterial || order.manualRequest);
+  if (virtualOrderMaterial) {
+    material = normalizeMaterial({
+      id: uid('m'),
+      name: order.materialName,
+      thickness: order.materialThickness,
+      format: order.materialFormat || '3000x1500',
+      storage: 'HAUPTLAGER',
+      shelf: req.body.targetShelf || 'Carport',
+      stock: 0,
+      packageStock: 0,
+      sheetStock: 0,
+      minStock: DEFAULT_MATERIAL_MIN_STOCK,
+      rest: false,
+      note: cleanText(order.note, '')
+    });
+  }
   if (!material) return res.status(404).json({ error: 'Zugehöriges Material wurde nicht gefunden.' });
 
-  const beforeSourceSnapshot = materialSnapshotById(material.id);
+  const beforeSourceSnapshot = virtualOrderMaterial ? { id: material.id, existed: false, material: null } : materialSnapshotById(material.id);
   let beforeTargetSnapshot = null;
   let changedTargetId = null;
   const packages = Math.max(0, Math.floor(numberOr(req.body.receivedAmount, 0)));
@@ -2619,7 +2737,7 @@ app.post('/api/orders/:id/receive', requireAuth, allowRoles('LASER', 'BUERO', 'C
   const undoSnaps = order.storage === 'KONSI' ? [beforeSourceSnapshot] : [beforeSourceSnapshot, beforeTargetSnapshot].filter(Boolean);
   const activity = addActivity('WARENEINGANG', `${req.user.name} hat Wareneingang für ${order.materialName} gebucht: ${orderQuantityText({ ...order, receivedAmount: packages, receivedSheets: sheets }, 'received')} nach ${placeText}${weightText}.`, req.user, { materialId: changedTargetId || material.id, materialIds: Array.from(new Set([material.id, changedTargetId].filter(Boolean))), orderId: order.id, undo: makeUndo('WARENEINGANG', undoSnaps, 'Wareneingang rückgängig') });
   saveDb();
-  emitToAll('order:updated', { order, activity, message: `Wareneingang gebucht: ${order.materialName} → ${placeText}`, targetRoles: ['LASER', 'BUERO', 'CHEF'] });
+  emitToAll('order:updated', { order, activity, message: `Wareneingang gebucht: ${order.materialName} → ${placeText}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('material:changed', { activity, message: `Bestand durch Lieferung aktualisiert: ${order.materialName}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('state:changed', { reason: 'order:received' });
   res.json({ order });

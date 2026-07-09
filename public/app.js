@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '0.9.8';
+const CLIENT_VERSION = '1.2';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -144,9 +144,19 @@ function smartTitleWord(word) {
 }
 
 function normalizeMaterialNumberInput(value) {
-  return String(value || '')
+  let text = String(value || '');
+  const knownCompact = {
+    '14301': '1.4301', '4301': '1.4301',
+    '14404': '1.4404', '4404': '1.4404',
+    '14571': '1.4571', '4571': '1.4571',
+    '14541': '1.4541', '4541': '1.4541',
+    '14016': '1.4016', '4016': '1.4016'
+  };
+  text = text
     .replace(/\b([1-9])\s*[,\.]\s*(\d{4})\b/g, '$1.$2')
-    .replace(/\b1\s*(\d{4})\b/g, '1.$1');
+    .replace(/\b1[\s.,-]*(\d{4})\b/g, '1.$1');
+  text = text.replace(/(^|[^0-9.,])(1?4(?:301|404|571|541|016))(?=$|[^0-9.,])/g, (match, prefix, code) => `${prefix}${knownCompact[code] || code}`);
+  return text;
 }
 
 function normalizeMaterialCaseInput(value) {
@@ -309,12 +319,16 @@ function searchTextVariants(value) {
   return searchVariants(value).join(' ');
 }
 
+function querySearchVariants(value) {
+  return baseSearchVariants(value);
+}
+
 function searchMatches(haystack, query) {
   const raw = String(query || '').trim();
   if (!raw) return true;
   const hay = searchTextVariants(haystack);
   return raw.split(/\s+/).filter(Boolean).every(part =>
-    searchVariants(part).some(needle => hay.includes(needle))
+    querySearchVariants(part).some(needle => hay.includes(needle))
   );
 }
 
@@ -334,9 +348,11 @@ function normalizeSearchNumber(value) {
 function isLikelyThicknessSearchToken(value) {
   const token = normalizeSearchNumber(value);
   if (!token) return false;
-  // Werkstoffnummern wie 1.4301 sollen Material-Synonyme bleiben, keine Stärke-Suche.
-  if (/^1[.,]?4301$/.test(String(value || '').toLowerCase().replace(/\s+/g, ''))) return false;
-  if (/^\d+$/.test(token)) return true;
+  const compactOriginal = String(value || '').toLowerCase().replace(/\s+/g, '').replace(',', '.');
+  // Werkstoffnummern wie 1.4301 / 1.4404 / 1.4571 und Teil-Eingaben wie 4571
+  // sollen Material-Synonyme bleiben und nicht als Stärke gesucht werden.
+  if (/^1\.\d{2,4}$/.test(compactOriginal) || /^1?4(?:301|404|571|541|016)$/.test(compactOriginal.replace('.', ''))) return false;
+  if (/^\d+$/.test(token)) return Number(token) <= 50;
   const decimalMatch = token.match(/^\d+\.(\d+)$/);
   if (!decimalMatch) return false;
   return decimalMatch[1].length <= 2 && Number(token) <= 50;
@@ -359,10 +375,11 @@ function materialSearchMatches(material, query) {
   if (!tokens.length) return true;
   const hay = searchTextVariants(materialSearchText(material));
   return tokens.every(token => {
+    const materialTextMatch = querySearchVariants(token).some(needle => hay.includes(needle));
     if (isLikelyThicknessSearchToken(token)) {
-      return materialThicknessMatchesToken(material, token);
+      return materialThicknessMatchesToken(material, token) || materialTextMatch;
     }
-    return searchVariants(token).some(needle => hay.includes(needle));
+    return materialTextMatch;
   });
 }
 
@@ -596,11 +613,13 @@ function materialCardQuantityLabel(material) {
 }
 
 function orderQuantityLabel(order, type = 'request') {
-  const amount = type === 'ordered' ? order.orderedAmount : (type === 'received' ? order.receivedAmount : order.requestedAmount);
-  const sheets = type === 'ordered' ? order.orderedSheets : (type === 'received' ? order.receivedSheets : order.requestedSheets);
+  const amount = Number(type === 'ordered' ? order.orderedAmount : (type === 'received' ? order.receivedAmount : order.requestedAmount)) || 0;
+  const sheets = Number(type === 'ordered' ? order.orderedSheets : (type === 'received' ? order.receivedSheets : order.requestedSheets)) || 0;
   if (order.storage === 'KONSI') return `${amount || 0} Pakete`;
-  if (type === 'received' && Number(amount) > 0 && Number(sheets) > 0) return `${amount || 0} Pakete = ${Number(sheets)} Tafeln`;
-  return `${amount || 0} Pakete${Number(sheets) ? ` + ${Number(sheets)} Tafeln` : ''}`;
+  if (type === 'received' && amount > 0 && sheets > 0) return `${amount} Pakete = ${sheets} Tafeln`;
+  if (amount > 0 && sheets > 0) return `${amount} Pakete + ${sheets} Tafeln`;
+  if (sheets > 0) return `${sheets} Tafeln`;
+  return `${amount || 0} Pakete`;
 }
 
 function orderMaterial(order) {
@@ -1839,7 +1858,7 @@ window.resetOrderFilters = () => {
 function orderSearchText(order) {
   return [
     order.materialName, orderThicknessLabel(order), orderFormatLabel(order), order.note, order.requestedBy, order.requestedByRole,
-    order.deliveredToShelf, order.status, statusNames[order.status],
+    order.deliveredToShelf, order.status, statusNames[order.status], order.manualOrder ? 'Handeingabe Bestellung selbst erfasst' : '', order.manualRequest ? 'Handeingabe freie Materialanfrage' : '', order.quantityUnit,
     order.createdAt ? fmtDate(order.createdAt) : '',
     order.lastUpdate ? fmtDate(order.lastUpdate) : '',
     order.orderedAt ? fmtDate(order.orderedAt) : '',
@@ -1898,10 +1917,10 @@ function drawOrdersList() {
 function renderOrders() {
   const incoming = currentOrderBaseList();
   const filtered = filteredOrdersList(incoming);
+  const canOpenOrderCapture = state.permissions.canRequestOrder || state.permissions.canReceiveDelivery;
   $('#orders').innerHTML = `
     <div class="toolbar">
-      ${currentUser.role !== 'ADMIN' ? '<button class="primary" onclick="openOrderModal()">Neue Bestellanforderung</button>' : ''}
-      ${state.permissions.canReceiveDelivery ? '<button class="secondary" onclick="openDirectIncomingModal()">Wareneingang ohne Bestellung</button>' : ''}
+      ${canOpenOrderCapture ? '<button class="primary" onclick="openOrderModal()">Vorgang erfassen</button>' : ''}
       <button class="secondary" onclick="loadState()">Aktualisieren</button>
     </div>
     ${orderFilterPanel(incoming, filtered)}
@@ -1923,8 +1942,8 @@ function renderOrdersTable(orders, withActions) {
       <tbody>
         ${orders.map(o => `
           <tr>
-            <td>${o.directIncoming ? '<span class="badge green">Wareneingang</span>' : statusBadge(o.status)}</td>
-            <td><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}<div class="small muted">${o.directIncoming ? 'Erfasst von' : 'Angefragt von'} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}</td>
+            <td>${o.directIncoming ? '<span class="badge green">Wareneingang</span>' : `${statusBadge(o.status)}${(o.manualOrder || o.manualRequest) ? '<br><span class="badge gray">Handeingabe</span>' : ''}`}</td>
+            <td><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}<div class="small muted">${o.directIncoming ? 'Erfasst von' : (o.manualOrder ? 'Bestellung erfasst von' : (o.manualRequest ? 'Per Handeingabe angefragt von' : 'Angefragt von'))} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}${o.manualOrder ? '<div class="small muted">Bestellung per Handeingabe</div>' : ''}${o.manualRequest ? '<div class="small muted">Freie Materialanfrage</div>' : ''}</td>
             <td>${o.directIncoming ? `Wareneingang: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : `Anfrage: <strong>${orderQuantityLabel(o, 'request')}</strong>${o.orderedAmount ? `<br>Bestellt: <strong>${orderQuantityLabel(o, 'ordered')}</strong>` : ''}${(Number(o.receivedAmount)||Number(o.receivedSheets)) ? `<br>Geliefert: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : ''}`}</td>
             <td class="order-note">${escapeHtml(o.note || '-')}</td>
             <td>${orderFlow(o.status)}<div class="small muted">Letzte Änderung: ${fmtDate(o.lastUpdate)}</div>${o.status === 'ERLEDIGT' ? `<div class="small muted">Geliefert: ${fmtDate(o.receivedAt || o.lastUpdate)}</div>` : ''}</td>
@@ -2524,7 +2543,7 @@ window.openAdminMaterialEditModal = (materialId) => {
         <h2>Materialdaten korrigieren</h2>
         <p>Bestand bleibt unverändert. Nur Stammdaten werden korrigiert.</p>
       </div>
-      <span class="modal-version-pill">v0.9.8</span>
+      <span class="modal-version-pill">v1.2</span>
     </div>
     <div class="modal-subtitle-card"><strong>${escapeHtml(materialTitle(data))}</strong><br>${stockText}<br><span>Stärke, Sonderformat und Schreibweise werden automatisch vereinheitlicht, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</span></div>
     <form id="adminMaterialEditForm" class="form-grid material-input-form">
@@ -2608,7 +2627,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
         <h2>${isEdit ? 'Material bearbeiten' : 'Material anlegen'}</h2>
         <p>${isEdit ? 'Daten sauber korrigieren, Bestand bleibt kontrolliert.' : 'Neues Material geordnet anlegen.'}</p>
       </div>
-      <span class="modal-version-pill">v0.9.8</span>
+      <span class="modal-version-pill">v1.2</span>
     </div>
     <div class="modal-subtitle-card"><strong>Hinweis:</strong> Stärke, Sonderformat und Schreibweise werden automatisch einheitlich gespeichert, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</div>
     <form id="materialForm" class="form-grid material-input-form">
@@ -3001,7 +3020,7 @@ window.deleteNonOrderMaterial = async (materialId) => {
         <h2>Eintrag entfernen</h2>
         <p>Nur möglich bei Bestand 0 und ohne offene Bestellung.</p>
       </div>
-      <span class="modal-version-pill">v0.9.8</span>
+      <span class="modal-version-pill">v1.2</span>
     </div>
     <div class="modal-subtitle-card delete-warning-card">
       <strong>${escapeHtml(title)}</strong><br>
@@ -3060,10 +3079,17 @@ window.openMoveMaterialModal = (materialId) => {
   const m = state.materials.find(x => x.id === materialId);
   if (!m) return;
   const available = Number(m.sheetStock ?? m.stock) || 0;
-  const targetOptions = defaultShelves
-    .filter(shelf => /^Regal\s[1-6]$/.test(shelf))
+  const shelves = Array.from(new Set([...(state && state.shelfOptions && state.shelfOptions.length ? state.shelfOptions : defaultShelves), 'Carport', 'Bodenhaltung']));
+  const overflowShelves = shelves.filter(shelf => ['Carport', 'Bodenhaltung'].includes(shelf));
+  const regalShelves = shelves.filter(shelf => /^Regal\s[1-6]$/.test(shelf));
+  const optionHtml = (items) => items
+    .filter(shelf => shelf !== m.shelf)
     .map(shelf => `<option value="${escapeHtml(shelf)}">${escapeHtml(shelf)}</option>`)
     .join('');
+  const targetOptions = `
+    <optgroup label="Zwischenlager / bleibt im Verräumen">${optionHtml(overflowShelves)}</optgroup>
+    <optgroup label="Endgültiges Regal">${optionHtml(regalShelves)}</optgroup>
+  `;
   const packageInfo = m.deliveryPending && Number(m.deliveredPackageCount) > 0
     ? ` · Wareneingang: ${Number(m.deliveredPackageCount)} Pakete = ${available} Tafeln`
     : '';
@@ -3072,9 +3098,9 @@ window.openMoveMaterialModal = (materialId) => {
     <p><strong>${escapeHtml(materialTitle(m))}</strong><br><span class="muted">Von ${escapeHtml(m.shelf || '-')} · verfügbar: ${available} Tafeln${packageInfo}</span></p>
     <form id="moveMaterialForm" class="form-grid">
       <div><label>Tafeln verschieben</label><input id="moveQty" type="number" min="1" max="${available}" step="1" value="${available}" required></div>
-      <div><label>Ziel-Regal</label><select id="moveTargetShelf" required>${targetOptions}</select></div>
-      <div class="form-full"><label>Notiz</label><textarea id="moveNote" placeholder="optional, z. B. verräumt nach Zuschnitt ..."></textarea></div>
-      <div class="notice form-full">Die Tafeln werden bei ${escapeHtml(m.shelf || 'Carport/Bodenhaltung')} automatisch abgezogen. Wenn dort nichts mehr übrig ist, verschwindet die Position.</div>
+      <div><label>Ziel-Lagerplatz</label><select id="moveTargetShelf" required>${targetOptions}</select></div>
+      <div class="form-full"><label>Notiz</label><textarea id="moveNote" placeholder="optional, z. B. erst in Bodenhaltung gelegt ..."></textarea></div>
+      <div class="notice form-full"><strong>Hinweis:</strong> Wenn Carport oder Bodenhaltung gewählt wird, bleibt die Position im Bereich Verräumen sichtbar. Erst bei Regal 1–6 ist sie endgültig verräumt.</div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Verräumen</button></div>
     </form>
   `);
@@ -3089,7 +3115,8 @@ window.openMoveMaterialModal = (materialId) => {
         body: JSON.stringify({ qty, targetShelf, note })
       });
       closeModal();
-      showToast('Tafeln verräumt', `${materialTitle(m)} → ${targetShelf}`);
+      const stillOpen = ['Carport', 'Bodenhaltung'].includes(targetShelf);
+      showToast(stillOpen ? 'Zwischengelagert' : 'Tafeln verräumt', `${materialTitle(m)} → ${targetShelf}`);
       await loadState(true);
     } catch (error) { showToast('Fehler', error.message); }
   });
@@ -3180,52 +3207,199 @@ window.openStockModal = (materialId, action = 'REMOVE') => {
 
 window.openRemoveModal = (materialId) => window.openStockModal(materialId, 'REMOVE');
 
-window.openOrderModal = (materialId = '') => {
-  if (!state.permissions.canRequestOrder) return showToast('Keine Berechtigung', 'Diese Rolle nutzt keine Bestellungen.');
-  const materials = state.materials.filter(m => !m.rest);
-  const options = materials.map(m => `<option value="${escapeHtml(m.id)}" ${m.id === materialId ? 'selected' : ''}>${escapeHtml(m.name)} · ${escapeHtml(storageLabel(m))} · ${quantityLabel(m)}</option>`).join('');
+window.openOrderModal = (materialId = '', initialMode = '') => {
+  const canRequest = Boolean(state.permissions.canRequestOrder);
+  const canDirectIncoming = Boolean(state.permissions.canReceiveDelivery);
+  if (!canRequest && !canDirectIncoming) return showToast('Keine Berechtigung', 'Diese Rolle darf keine Bestell- oder Wareneingänge erfassen.');
+
+  const availableModes = [];
+  if (canRequest) availableModes.push(['REQUEST', 'Bestellanforderung']);
+  if (canDirectIncoming) availableModes.push(['DIRECT_INCOMING', 'Wareneingang ohne Bestellung']);
+  let mode = initialMode && availableModes.some(([value]) => value === initialMode) ? initialMode : (availableModes[0] ? availableModes[0][0] : 'REQUEST');
+  const modeOptions = availableModes.map(([value, label]) => `<option value="${value}" ${value === mode ? 'selected' : ''}>${label}</option>`).join('');
+
+  const orderMaterials = (state.materials || []).filter(m => !m.archived && !m.rest);
+  const orderOptions = orderMaterials.map(m => `<option value="${escapeHtml(m.id)}" ${m.id === materialId ? 'selected' : ''}>${escapeHtml(materialTitle(m))} · ${escapeHtml(storageLabel(m))} · ${quantityLabel(m)}</option>`).join('');
+  const directOptions = (state.materials || [])
+    .filter(m => !m.archived && !m.rest && !isKonsi(m))
+    .map(m => `<option value="${escapeHtml(m.id)}" ${m.id === materialId ? 'selected' : ''}>${escapeHtml(materialTitle(m))} · ${escapeHtml(formatDisplayValue(m.format || '-'))} · ${escapeHtml(materialLocationLabel(m))}</option>`)
+    .join('');
+
   openModal(`
-    <h2>Bestellung angeben</h2>
-    <p class="muted">Normale Bestellungen: Pakete + Tafeln. Konsi-Lager: nur Pakete.</p>
+    <h2>Bestellung / Wareneingang erfassen</h2>
+    <p class="muted" id="orderCaptureHint">Wähle, ob du eine Bestellanforderung oder einen Wareneingang ohne Bestellung erfassen möchtest.</p>
     <form id="orderForm" class="form-grid">
-      <div class="form-full"><label>Material</label><select id="orderMaterial">${options}</select></div>
-      <div><label id="orderAmountLabel">Menge</label><input id="orderAmount" type="number" min="1" step="1" value="1"></div>
-      <div id="orderSheetsRow"><label>Tafeln</label><input id="orderSheets" type="number" min="0" step="1" value="0"></div>
-      <div class="form-full"><label>Hinweis</label><textarea id="orderNote" placeholder="z. B. Mindestbestand erreicht, wird am Laser benötigt ..."></textarea></div>
-      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Meldung senden</button></div>
+      <div class="form-full"><label>Art des Vorgangs</label><select id="orderCaptureMode">${modeOptions}</select></div>
+
+      <div class="form-full capture-section" id="orderRequestSection">
+        <div class="notice"><strong>Bestellanforderung</strong><br><span id="orderRequestNotice">Jede Rolle kann hier eine Anfrage erfassen. Das Material kann aus der Liste gewählt oder frei eingetippt werden.</span></div>
+      </div>
+      <div class="capture-section" id="orderInputModeSection"><label>Materialangabe</label><select id="orderInputMode"><option value="EXISTING">Material aus Liste</option><option value="MANUAL">Material frei eingeben</option></select></div>
+      <div class="form-full capture-section" id="orderMaterialSection"><label>Material aus Liste</label><select id="orderMaterial">${orderOptions}</select></div>
+      <div class="capture-section hidden" id="orderManualNameSection"><label>Material</label><input id="orderManualName" placeholder="z. B. 1.4571 oder AlMg3"></div>
+      <div class="capture-section hidden" id="orderManualThicknessSection"><label>Stärke</label><input id="orderManualThickness" placeholder="z. B. 2,5 oder 2,50 mm"><div class="format-hint">Wird automatisch z. B. zu 2,50 mm.</div></div>
+      <div class="capture-section" id="orderAmountSection"><label id="orderAmountLabel">Menge</label><input id="orderAmount" type="number" min="1" step="1" value="1"></div>
+      <div class="capture-section" id="orderUnitSection"><label>Einheit</label><select id="orderUnit"><option value="PAKET">Paket(e)</option><option value="TAFEL">Tafel(n)</option></select></div>
+      <div class="form-full capture-section" id="orderNoteSection"><label id="orderNoteLabel">Hinweis</label><textarea id="orderNote" placeholder="z. B. Lieferant, dringend, Rückfrage ..."></textarea></div>
+
+      <div class="form-full capture-section hidden" id="directIncomingSection">
+        <div class="notice"><strong>Wareneingang ohne Bestellung</strong><br>Für Lieferungen, die nicht vorher in der Bestellliste standen. Der Eingang wird als Wareneingang in Material und Historie markiert.</div>
+      </div>
+      <div class="form-full capture-section hidden" id="directIncomingMaterialSection"><label>Material aus Bestand wählen oder neues Material erfassen</label><select id="directIncomingMaterial"><option value="">Neues / nicht gelistetes Material</option>${directOptions}</select></div>
+      <div class="capture-section hidden" id="directIncomingNameSection"><label>Material</label><input id="directIncomingName" placeholder="z. B. S235"></div>
+      <div class="capture-section hidden" id="directIncomingThicknessSection"><label>Stärke</label><input id="directIncomingThickness" placeholder="z. B. 3 oder 3 mm"><div class="format-hint">Pflichtfeld: Wareneingang kann erst mit Stärke gebucht werden.</div></div>
+      <div class="capture-section hidden" id="directIncomingFormatSection"><label>Format</label><select id="directIncomingFormat">${formatOptions('3000x1500')}</select></div>
+      <div class="capture-section hidden" id="directIncomingShelfSection"><label>Ablageort</label><select id="directIncomingShelf">${shelfOptions('Carport')}</select></div>
+      <div class="capture-section hidden" id="directIncomingPackagesSection"><label>Gelieferte Pakete</label><input id="directIncomingPackages" type="number" min="0" step="1" value="1"></div>
+      <div class="capture-section hidden" id="directIncomingWeightSection"><label>Gewicht pro Paket kg</label><input id="directIncomingWeight" type="number" min="0" step="0.1" placeholder="z. B. 850"><div class="format-hint">Optional. Daraus kann die Tafeln-Menge berechnet werden.</div></div>
+      <div class="form-full weight-calc-box capture-section hidden" id="directIncomingCalcSection"><div><strong>Berechnung</strong><br><span id="directIncomingWeightHint">Bei neuem Material Stärke und Format eintragen, dann wird die Berechnung genauer.</span></div><div class="format-hint" id="directIncomingCalcHint">Pakete und Gewicht pro Paket eintragen, dann wird eine Tafeln-Menge vorgeschlagen.</div></div>
+      <div class="capture-section hidden" id="directIncomingSheetsSection"><label>Berechnete / gelieferte Tafeln</label><input id="directIncomingSheets" type="number" min="0" step="1" value="0"></div>
+      <div class="form-full capture-section hidden" id="directIncomingNoteSection"><label>Bemerkung</label><textarea id="directIncomingNote" placeholder="z. B. Lieferschein, Lieferant, ohne Bestellung gekommen ..."></textarea></div>
+
+      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" id="orderSubmitButton" type="submit">Speichern</button></div>
     </form>
   `);
-  const updateOrderLabels = () => {
-    const selected = state.materials.find(m => m.id === $('#orderMaterial').value);
-    const konsi = isKonsi(selected);
-    $('#orderAmountLabel').textContent = 'Pakete';
-    $('#orderSheetsRow').classList.toggle('hidden', konsi);
+
+  const orderSectionIds = ['orderRequestSection','orderInputModeSection','orderMaterialSection','orderManualNameSection','orderManualThicknessSection','orderAmountSection','orderUnitSection','orderNoteSection'];
+  const incomingSectionIds = ['directIncomingSection','directIncomingMaterialSection','directIncomingNameSection','directIncomingThicknessSection','directIncomingFormatSection','directIncomingShelfSection','directIncomingPackagesSection','directIncomingWeightSection','directIncomingCalcSection','directIncomingSheetsSection','directIncomingNoteSection'];
+  const showIds = (ids, show) => ids.forEach(id => { const el = $('#'+id); if (el) el.classList.toggle('hidden', !show); });
+
+  const selectedOrderMaterial = () => (state.materials || []).find(m => m.id === $('#orderMaterial').value) || null;
+  const selectedIncomingMaterial = () => (state.materials || []).find(m => m.id === $('#directIncomingMaterial').value) || null;
+  const currentIncomingMaterialData = () => selectedIncomingMaterial() || {
+    name: $('#directIncomingName').value,
+    thickness: $('#directIncomingThickness').value,
+    format: $('#directIncomingFormat').value
   };
-  $('#orderMaterial').addEventListener('change', updateOrderLabels);
-  updateOrderLabels();
+
+  const updateOrderEntryMode = () => {
+    const manual = $('#orderInputMode').value === 'MANUAL';
+    const selected = selectedOrderMaterial();
+    const konsi = !manual && isKonsi(selected);
+    $('#orderMaterialSection').classList.toggle('hidden', manual);
+    $('#orderManualNameSection').classList.toggle('hidden', !manual);
+    $('#orderManualThicknessSection').classList.toggle('hidden', !manual);
+    $('#orderUnit').value = konsi ? 'PAKET' : $('#orderUnit').value;
+    $('#orderUnit option[value="TAFEL"]').disabled = konsi;
+    $('#orderAmountLabel').textContent = 'Menge';
+  };
+
+  function updateDirectIncomingCalculation() {
+    const material = currentIncomingMaterialData();
+    const packages = Number($('#directIncomingPackages').value || 0);
+    const weight = Number($('#directIncomingWeight').value || 0);
+    const sheets = estimatedSheetsFromWeight(material, weight, packages);
+    const oneSheet = sheetWeightKg(material);
+    $('#directIncomingWeightHint').textContent = weightInfoText(material);
+    if (sheets > 0) {
+      $('#directIncomingSheets').value = sheets;
+      $('#directIncomingCalcHint').textContent = `${packages} Paket(e) × ${String(weight).replace('.', ',')} kg → ca. ${sheets} Tafeln${oneSheet ? ` (${oneSheet.toFixed(1).replace('.', ',')} kg/Tafel)` : ''}.`;
+    } else {
+      $('#directIncomingCalcHint').textContent = 'Pakete und Gewicht pro Paket eintragen, dann wird eine Tafeln-Menge vorgeschlagen.';
+    }
+  }
+
+  const fillIncomingFromSelected = () => {
+    const material = selectedIncomingMaterial();
+    const isExisting = Boolean(material);
+    $('#directIncomingName').disabled = isExisting;
+    $('#directIncomingThickness').disabled = isExisting;
+    $('#directIncomingFormat').disabled = isExisting;
+    if (material) {
+      $('#directIncomingName').value = material.name || '';
+      $('#directIncomingThickness').value = material.thickness || '';
+      setFormatSelectValue('#directIncomingFormat', material.format || '3000x1500');
+    }
+    updateDirectIncomingCalculation();
+  };
+
+  const updateCaptureMode = () => {
+    const current = $('#orderCaptureMode').value;
+    const isIncoming = current === 'DIRECT_INCOMING';
+    showIds(orderSectionIds, !isIncoming);
+    showIds(incomingSectionIds, isIncoming);
+    $('#orderSubmitButton').textContent = isIncoming ? 'Wareneingang buchen' : 'Anfrage senden';
+    $('#orderCaptureHint').textContent = isIncoming
+      ? 'Wareneingang ohne Bestellung wird sofort als gelieferter Eingang gebucht.'
+      : 'Bestellanforderung wird als offene Anfrage für Büro/Chef gespeichert.';
+    if (isIncoming) fillIncomingFromSelected();
+    else updateOrderEntryMode();
+  };
+
+  $('#orderCaptureMode').addEventListener('change', updateCaptureMode);
+  $('#orderInputMode').addEventListener('change', updateOrderEntryMode);
+  $('#orderMaterial').addEventListener('change', updateOrderEntryMode);
+  $('#orderManualName').addEventListener('blur', () => { $('#orderManualName').value = normalizeMaterialCaseInput($('#orderManualName').value); });
+  $('#orderManualThickness').addEventListener('blur', () => { $('#orderManualThickness').value = normalizeThicknessInput($('#orderManualThickness').value); });
+  $('#directIncomingMaterial').addEventListener('change', fillIncomingFromSelected);
+  ['directIncomingName','directIncomingThickness','directIncomingFormat','directIncomingPackages','directIncomingWeight'].forEach(id => {
+    const el = $('#'+id);
+    if (el) el.addEventListener('input', updateDirectIncomingCalculation);
+    if (el && el.tagName === 'SELECT') el.addEventListener('change', updateDirectIncomingCalculation);
+  });
+  updateCaptureMode();
+
   $('#orderForm').addEventListener('submit', async (event) => {
     event.preventDefault();
-    const selected = state.materials.find(m => m.id === $('#orderMaterial').value);
-    const konsi = isKonsi(selected);
+    const current = $('#orderCaptureMode').value;
     try {
-      await api('/api/orders', {
-        method: 'POST',
-        body: JSON.stringify({ materialId: $('#orderMaterial').value, amount: Number($('#orderAmount').value), sheets: konsi ? 0 : Number($('#orderSheets').value), note: $('#orderNote').value })
-      });
+      if (current === 'DIRECT_INCOMING') {
+        const requiredThickness = normalizeThicknessInput($('#directIncomingThickness').value).trim();
+        if (!requiredThickness) {
+          showToast('Stärke fehlt', 'Bitte zuerst die Stärke eintragen.');
+          $('#directIncomingThickness').focus();
+          return;
+        }
+        const payload = {
+          materialId: $('#directIncomingMaterial').value,
+          name: $('#directIncomingName').value,
+          thickness: requiredThickness,
+          format: $('#directIncomingFormat').value,
+          receivedAmount: Number($('#directIncomingPackages').value || 0),
+          receivedSheets: Number($('#directIncomingSheets').value || 0),
+          packageWeightKg: Number($('#directIncomingWeight').value || 0),
+          targetShelf: $('#directIncomingShelf').value,
+          note: $('#directIncomingNote').value
+        };
+        await api('/api/orders/direct-receive', { method: 'POST', body: JSON.stringify(payload) });
+        showToast('Wareneingang gebucht', `Material wurde als Wareneingang nach ${payload.targetShelf || 'Carport'} gebucht.`);
+        orderFilter.status = 'delivered';
+      } else {
+        const manual = $('#orderInputMode').value === 'MANUAL';
+        const unit = $('#orderUnit').value === 'TAFEL' ? 'TAFEL' : 'PAKET';
+        const qty = Number($('#orderAmount').value || 0);
+        if (!Number.isFinite(qty) || qty <= 0) return showToast('Menge fehlt', 'Bitte eine gültige Menge eintragen.');
+        if (manual && !normalizeMaterialCaseInput($('#orderManualName').value).trim()) return showToast('Material fehlt', 'Bitte Material eintragen.');
+        if (manual && !normalizeThicknessInput($('#orderManualThickness').value).trim()) return showToast('Stärke fehlt', 'Bitte Stärke eintragen.');
+        const payload = {
+          materialId: manual ? '' : $('#orderMaterial').value,
+          name: manual ? $('#orderManualName').value : '',
+          thickness: manual ? normalizeThicknessInput($('#orderManualThickness').value) : '',
+          amount: unit === 'PAKET' ? qty : 0,
+          sheets: unit === 'TAFEL' ? qty : 0,
+          unit,
+          note: $('#orderNote').value
+        };
+        await api('/api/orders', { method: 'POST', body: JSON.stringify(payload) });
+        showToast('Bestellung gesendet', manual ? 'Die freie Materialanfrage wurde an Büro/Chef übertragen.' : 'Die Meldung wurde an Büro/Chef übertragen.');
+        orderFilter.status = 'requested';
+      }
       closeModal();
-      showToast('Bestellung gesendet', 'Die Meldung wurde an Büro/Chef übertragen.');
       await loadState(true);
+      currentPage = 'orders';
+      renderCurrentPage();
     } catch (error) { showToast('Fehler', error.message); }
   });
 };
+
 
 window.openOrderedModal = (orderId) => {
   const o = state.orders.find(x => x.id === orderId);
   openModal(`
     <h2>Als bestellt markieren</h2>
-    <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Anfrage vom Laser: ${orderQuantityLabel(o, 'request')}</span></p>
+    <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Anfrage: ${orderQuantityLabel(o, 'request')}</span></p>
     <form id="orderedForm" class="form-grid">
-      <div><label>Bestellte Pakete</label><input id="orderedAmount" type="number" min="1" step="1" value="${o.requestedAmount}"></div>${o.storage !== 'KONSI' ? `<div><label>Bestellte Tafeln</label><input id="orderedSheets" type="number" min="0" step="1" value="${Number(o.requestedSheets || 0)}"></div>` : ''}
+      <div><label>Bestellte Pakete</label><input id="orderedAmount" type="number" min="${o.storage === 'KONSI' ? '1' : '0'}" step="1" value="${Number(o.requestedAmount || 0)}"></div>${o.storage !== 'KONSI' ? `<div><label>Bestellte Tafeln</label><input id="orderedSheets" type="number" min="0" step="1" value="${Number(o.requestedSheets || 0)}"></div>` : ''}
       <div class="form-full"><label>Hinweis vom Büro</label><textarea id="orderedNote" placeholder="z. B. Liefertermin, Lieferant oder Rückfrage ...">${escapeHtml(o.note || '')}</textarea></div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Bestellt melden</button></div>
     </form>
@@ -3242,10 +3416,11 @@ window.openReceiveModal = (orderId) => {
   const o = state.orders.find(x => x.id === orderId);
   if (!o) return;
   const isK = o.storage === 'KONSI';
-  const material = (state.materials || []).find(m => m.id === o.materialId) || {};
-  const orderedP = Number(o.orderedAmount || o.requestedAmount || 0);
+  const material = (state.materials || []).find(m => m.id === o.materialId) || { name: o.materialName, thickness: o.materialThickness, format: o.materialFormat || '3000x1500' };
+  const orderedP = Number(o.orderedAmount ?? o.requestedAmount ?? 0) || 0;
+  const orderedS = Number(o.orderedSheets ?? o.requestedSheets ?? 0) || 0;
   const receivedP = Number(o.receivedAmount || 0);
-  const openP = Math.max(0, orderedP - receivedP) || 1;
+  const openP = Math.max(0, orderedP - receivedP) || (orderedS > 0 ? 0 : 1);
   const defaultWeight = Number(o.lastPackageWeightKg || material.lastPackageWeightKg || 0) || '';
   openModal(`
     <h2>${isK ? 'Konsi-Lieferung annehmen' : 'Lieferung annehmen'}</h2>
@@ -3254,7 +3429,7 @@ window.openReceiveModal = (orderId) => {
       <div><label>Gelieferte Pakete</label><input id="receivedAmount" type="number" min="0" step="1" value="${openP}"><div class="format-hint">Nur bei Lieferung: Pakete werden über Gewicht in Tafeln umgerechnet.</div></div>
       ${isK ? '' : `<div><label>Gewicht pro Paket kg</label><input id="packageWeightKg" type="number" min="0" step="0.1" value="${defaultWeight}" placeholder="z. B. 850"><div class="format-hint">Beispiel: 2 Pakete à 850 kg = 1700 kg.</div></div>
       <div class="form-full weight-calc-box"><div><strong>Berechnung</strong><br><span id="sheetWeightHint">${escapeHtml(weightInfoText(material))}</span></div><div class="format-hint" id="weightCalcHint">Pakete und Gewicht pro Paket eintragen, dann werden die Tafeln automatisch vorgeschlagen.</div></div>
-      <div><label>Berechnete Tafeln</label><input id="receivedSheets" type="number" min="0" step="1" value="0"><div class="format-hint">Wird aus Pakete × Gewicht berechnet, kann aber überschrieben werden.</div></div>`}
+      <div><label>Berechnete Tafeln</label><input id="receivedSheets" type="number" min="0" step="1" value="${Math.max(0, orderedS - Number(o.receivedSheets || 0))}"><div class="format-hint">Wird aus Pakete × Gewicht berechnet, kann aber überschrieben werden.</div></div>`}
       ${isK ? `<div class="form-full"><label>Konsi-Paketnummern</label><textarea id="receivedPackageNumbers" placeholder="eine Paketnummer pro Zeile"></textarea><div class="format-hint">Beim Konsi muss für jedes gelieferte Paket eine Nummer eingetragen werden.</div></div>` : `<div class="form-full"><label>Ablageort</label><select id="deliveryShelf">${shelfOptions('Carport')}</select><div class="format-hint">Standard ist Carport, weil Lieferungen meistens dort gelagert werden. Ausnahmen können direkt auf Bodenhaltung oder Regal 1–6 gebucht werden.</div></div>`}
       <div class="form-full"><label>Bemerkung</label><textarea id="receiveNote" placeholder="z. B. Lieferschein, Schaden, Besonderheit ...">${escapeHtml(o.note || '')}</textarea></div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Lieferung annehmen</button></div>

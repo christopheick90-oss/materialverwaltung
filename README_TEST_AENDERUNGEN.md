@@ -1,31 +1,30 @@
-# Teständerungen 0.9.8
+# Teständerungen 1.2
 
-Basis: v0.9.7 im Master-Design, weitergeführt als v0.9.8.
+Basis: v1.1 im Master-Design, weitergeführt als v1.2.
 
-## Neu in v0.9.8
+## Neu in v1.2
 
-### Werkstoffnummern
+### Verräumen / Zwischenlager
 
-- Werkstoffnummern werden automatisch mit Punkt gespeichert.
-- Auch falsch gespeicherte Kurzformen werden beim Laden/Speichern wieder korrigiert.
-- Beispiele:
-  - `1,4404` wird `1.4404`
-  - `1,4571` wird `1.4571`
-  - `1,4301` wird `1.4301`
-  - `14571` wird `1.4571`
-  - `14404` wird `1.4404`
-  - `14301` wird `1.4301`
+- Im Fenster **Tafeln verräumen** heißt die Auswahl jetzt **Ziel-Lagerplatz**.
+- Auswahlmöglichkeiten:
+  - **Carport**
+  - **Bodenhaltung**
+  - **Regal 1** bis **Regal 6**
+- **Carport** und **Bodenhaltung** bleiben offene Zwischenlagerplätze.
+- Wenn Material nach **Carport** oder **Bodenhaltung** verschoben wird, bleibt es weiterhin im Bereich **Verräumen**.
+- Erst bei Ziel **Regal 1–6** ist das Material endgültig verräumt.
+- Der gleiche Lagerplatz kann nicht nochmal als Ziel gewählt werden, damit keine doppelten Positionen entstehen.
 
-### Entnahmen suchen
+### Wareneingang
 
-- In **Historie** gibt es jetzt einen eigenen Block **Entnahmen suchen**.
-- Diese Suche ist getrennt von der normalen Materialsuche.
-- Angezeigt werden nur Vorgänge, in denen Material entnommen wurde.
-- Suchbar nach Material, Werkstoffnummer, Teilenr., Stärke, Format, Benutzer und Datum.
+- Wareneingang nach **Carport** oder **Bodenhaltung** bleibt offen zum späteren Verräumen.
+- Wareneingang direkt nach **Regal 1–6** wird direkt als einsortiert behandelt.
 
 ## Unverändert
 
-- Stärken bleiben im Format `2,00 mm` / `2,50 mm`.
-- Sonderformate bleiben erhalten.
-- Teilenr. bleibt bei Materialanlage und Korrektur enthalten.
 - Master-Design bleibt Grundlage.
+- Freie Bestellanforderung per Handeingabe bleibt enthalten.
+- Stärken bleiben im Format `2,00 mm` / `2,50 mm`.
+- Werkstoffnummern bleiben mit Punkt, z. B. `1.4571`.
+- Entnahmen-Suche bleibt in der Historie getrennt.

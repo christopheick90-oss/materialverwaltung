@@ -1,23 +1,25 @@
-# Eckl Eco Technics - Materialverwaltung V0.9.8
+# Eckl Eco Technics - Materialverwaltung V1.2
 
-Basis: v0.9.7 im Master-Design, weitergeführt als v0.9.8.
+Basis: v1.1 im Master-Design, weitergeführt als v1.2.
 
-## Neu in v0.9.8
+## Neu in v1.2
 
-- Werkstoffnummern werden noch robuster gespeichert.
-- Auch Zahlen ohne Punkt werden erkannt, z. B. `14571` → `1.4571`.
-- Beispiele: `1,4404` → `1.4404`, `1,4571` → `1.4571`, `1,4301` → `1.4301`, `14571` → `1.4571`.
-- Materialsuche kennt jetzt die Varianten `1.4404` / `14404` und `1.4571` / `14571`.
-- In der Historie gibt es einen eigenen Bereich **Entnahmen suchen**.
-- Dort werden nur Entnahmen angezeigt und nach Material, Teilenr., Stärke, Format, Benutzer oder Datum gefiltert.
-- Die normale Materialsuche bleibt unverändert.
+- Beim **Verräumen** stehen jetzt neben **Regal 1–6** auch **Carport** und **Bodenhaltung** als Ziel-Lagerplatz zur Auswahl.
+- **Carport** und **Bodenhaltung** sind als Zwischenlager gedacht.
+- Wenn beim Verräumen **Carport** oder **Bodenhaltung** gewählt wird, bleibt die Position weiterhin im Bereich **Verräumen** sichtbar.
+- Erst wenn die Tafeln auf **Regal 1–6** verräumt werden, gilt die Position als endgültig einsortiert.
+- Teilmengen können verschoben werden; der Rest bleibt am bisherigen Zwischenlagerplatz offen.
+- Wareneingang nach **Carport** oder **Bodenhaltung** bleibt ebenfalls offen zum späteren Verräumen.
+- Wareneingang direkt nach **Regal 1–6** wird nicht mehr als offene Verräumen-Position geführt.
 
 ## Weiterhin enthalten
 
-- Automatische Groß-/Kleinschreibung bei Material anlegen und Admin-Korrektur.
+- Freie Bestellanforderung per Handeingabe für alle Rollen.
+- Werkstoffnummern wie `14571` werden zu `1.4571`.
+- Suche findet Werkstoffnummern auch mit Teil-Eingaben wie `4571` oder `4404`.
+- Entnahmen-Suche bleibt getrennt in der Historie.
 - Stärken werden automatisch als `2,00 mm` / `2,50 mm` gespeichert.
 - Sonderformate wie `1000 x 1000` werden als `1000x1000` gespeichert.
-- Teilenr. ist bei Materialanlage, Korrektur, Materialkarte, Suche und Admin-Materialpflege enthalten.
 
 ## Start
 

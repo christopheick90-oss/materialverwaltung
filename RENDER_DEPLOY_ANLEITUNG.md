@@ -1,3 +1,5 @@
-# Render Deploy Anleitung V0.9.8
+# Render Deploy Anleitung V1.2
 
-Für Render wie bisher hochladen/deployen. Wichtig: Im Repository müssen `package.json`, `server.js` und der Ordner `public` direkt sichtbar sein.
+Diese Version kann wie die vorherige Version auf Render deployed werden.
+
+V1.2 ergänzt beim Verräumen Carport und Bodenhaltung als Zwischenlager. Material bleibt dort im Bereich Verräumen, bis es einem Regal 1–6 zugeordnet wurde.
