@@ -217,7 +217,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '2.2';
+const PROGRAM_VERSION = '2.3';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -1366,7 +1366,7 @@ function migrateDb(db) {
   db.inventories = db.inventories.map(normalizeInventorySession).filter(Boolean);
   const normalizedSettings = normalizeSettings(db.settings || {});
   if (JSON.stringify(db.settings || {}) !== JSON.stringify(normalizedSettings)) { db.settings = normalizedSettings; changed = true; }
-  if (db.version !== 23) { db.version = 23; changed = true; }
+  if (db.version !== 24) { db.version = 24; changed = true; }
   if (changed) saveDb(db);
   return db;
 }
@@ -1468,6 +1468,30 @@ function materialSnapshotById(materialId) {
 
 function makeUndo(action, materials, label = '') {
   return { id: uid('undo'), action, label, materials: materials.map(m => cloneData(m)), used: false, createdAt: nowIso() };
+}
+
+function applyMaterialSnapshots(snapshots, usedAt = nowIso()) {
+  const touchedIds = [];
+  (snapshots || []).filter(Boolean).forEach(snapshot => {
+    if (!snapshot || !snapshot.id) return;
+    const index = db.materials.findIndex(m => m.id === snapshot.id);
+    touchedIds.push(snapshot.id);
+    if (snapshot.existed && snapshot.material) {
+      const restored = normalizeMaterial(snapshot.material);
+      restored.id = snapshot.id;
+      restored.updatedAt = usedAt;
+      if (index >= 0) db.materials[index] = restored;
+      else db.materials.push(restored);
+    } else if (!snapshot.existed && index >= 0) {
+      db.materials[index].archived = true;
+      db.materials[index].stock = 0;
+      db.materials[index].packageStock = 0;
+      db.materials[index].sheetStock = 0;
+      db.materials[index].deliveryPending = false;
+      db.materials[index].updatedAt = usedAt;
+    }
+  });
+  return Array.from(new Set(touchedIds));
 }
 
 function addActivity(type, text, user = null, extra = {}) {
@@ -2023,7 +2047,8 @@ function buildState(user) {
       canManageSystem: user.role === 'ADMIN',
       canExportMaterials: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canManagePrices: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
-      canCorrectIncoming: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role)
+      canCorrectIncoming: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
+      canDirectWriteOff: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role)
     }
   };
 }
@@ -2554,6 +2579,32 @@ app.post('/api/materials/:id/price', requireAuth, allowRoles('BUERO', 'CHEF', 'A
   emitToAll('material:changed', { material, activity, message: `KG-Preis aktualisiert: ${material.name}`, targetRoles: ['BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('state:changed', { reason: 'material:price' });
   res.json({ material: redactMaterialForUser(material, req.user) });
+});
+
+
+app.post('/api/materials/:id/write-off', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const material = db.materials.find(m => m.id === req.params.id && !m.archived);
+  if (!material) return res.status(404).json({ error: 'Material wurde nicht gefunden.' });
+  const beforeSnapshot = materialSnapshotById(material.id);
+  const beforeText = quantityText(material);
+  const note = cleanText(req.body.note, '');
+  if ((Number(material.stock) || 0) <= 0 && (Number(material.sheetStock) || 0) <= 0 && (Number(material.packageStock) || 0) <= 0 && !normalizePackageNumbers(material.packageNumbers).length) {
+    return res.status(400).json({ error: 'Dieses Material ist bereits ausgebucht.' });
+  }
+  material.packageNumbers = [];
+  material.packageStock = 0;
+  material.sheetStock = 0;
+  material.stock = 0;
+  material.deliveredPackageCount = 0;
+  material.deliveryPending = false;
+  material.deliveryStatus = '';
+  material.updatedAt = nowIso();
+  const extra = note ? ` Hinweis: ${note}` : '';
+  const activity = addActivity('BESTAND', `${req.user.name} hat ${materialTitleText(material)} komplett ausgebucht (${beforeText} → 0).${extra}`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_WRITE_OFF', [beforeSnapshot], 'Komplett ausbuchen rückgängig') });
+  saveDb();
+  emitToAll('material:changed', { material, activity, message: `Material komplett ausgebucht: ${materialTitleText(material)}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('state:changed', { reason: 'material:write-off' });
+  res.json({ material, activity });
 });
 
 app.post('/api/materials/:id/stock', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN'), (req, res) => {
@@ -3571,6 +3622,110 @@ app.post('/api/orders/:id/receive', requireAuth, allowRoles('LASER', 'BUERO', 'C
   emitToAll('order:updated', { order, activity, message: `Wareneingang gebucht: ${order.materialName} → ${placeText}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('material:changed', { activity, message: `Bestand durch Lieferung aktualisiert: ${order.materialName}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('state:changed', { reason: 'order:received' });
+  res.json({ order });
+});
+
+
+app.post('/api/orders/:id/undo-delivery', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const order = db.orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Bestellung wurde nicht gefunden.' });
+  const hasDelivery = Math.max(0, numberOr(order.receivedAmount, 0)) > 0 || Math.max(0, numberOr(order.receivedSheets, 0)) > 0 || (Array.isArray(order.deliveries) && order.deliveries.length);
+  if (!hasDelivery) return res.status(400).json({ error: 'Bei dieser Bestellung ist keine Lieferung gebucht.' });
+  const changedAt = nowIso();
+  const deliveries = Array.isArray(order.deliveries) ? order.deliveries : [];
+  const snapshots = [];
+  const touchedIds = new Set();
+  const snapshotMaterial = (material) => {
+    if (!material || touchedIds.has(material.id)) return;
+    snapshots.push(materialSnapshotById(material.id));
+    touchedIds.add(material.id);
+  };
+
+  if (order.storage === 'KONSI') {
+    const material = db.materials.find(m => m.id === order.materialId && !m.archived);
+    if (material) {
+      snapshotMaterial(material);
+      let numbers = normalizePackageNumbers(material.packageNumbers);
+      const deliveredNumbers = deliveries.flatMap(d => normalizePackageNumbers(d.packageNumbers));
+      if (deliveredNumbers.length) {
+        deliveredNumbers.forEach(number => {
+          const index = numbers.indexOf(number);
+          if (index >= 0) numbers.splice(index, 1);
+        });
+      } else {
+        const removeCount = Math.max(0, numberOr(order.receivedAmount, 0));
+        numbers = numbers.slice(0, Math.max(0, numbers.length - removeCount));
+      }
+      material.packageNumbers = numbers;
+      material.stock = numbers.length;
+      material.packageStock = 0;
+      material.sheetStock = 0;
+      material.updatedAt = changedAt;
+    }
+  } else {
+    const deliveriesToUndo = deliveries.length ? deliveries : [{ packages: order.receivedAmount, sheets: order.receivedSheets, targetShelf: order.deliveredToShelf, materialFormat: order.materialFormat }];
+    deliveriesToUndo.forEach(delivery => {
+      const sourceMaterial = normalizeMaterial({
+        name: order.materialName,
+        thickness: order.materialThickness,
+        format: delivery.materialFormat || order.materialFormat || '3000x1500',
+        storage: 'HAUPTLAGER',
+        shelf: normalizeShelf(delivery.targetShelf || order.deliveredToShelf || 'Carport'),
+        stock: 0,
+        sheetStock: 0,
+        packageStock: 0,
+        rest: false
+      });
+      const targetShelf = normalizeShelf(delivery.targetShelf || order.deliveredToShelf || 'Carport');
+      const target = (order.directIncoming && order.materialId)
+        ? db.materials.find(m => m.id === order.materialId && !m.archived)
+        : db.materials.find(m => !m.archived && m.storage !== 'KONSI' && deliveryTargetKey(m, m.shelf) === deliveryTargetKey(sourceMaterial, targetShelf));
+      if (!target) return;
+      snapshotMaterial(target);
+      const packages = Math.max(0, numberOr(delivery.packages, 0));
+      const sheets = Math.max(0, numberOr(delivery.sheets, 0));
+      target.deliveredPackageCount = Math.max(0, numberOr(target.deliveredPackageCount, 0) - packages);
+      target.sheetStock = Math.max(0, numberOr(target.sheetStock, numberOr(target.stock, 0)) - sheets);
+      target.stock = Math.max(0, numberOr(target.packageStock, 0)) + target.sheetStock;
+      if (target.stock <= 0) {
+        target.deliveryPending = false;
+        target.deliveryStatus = '';
+      }
+      target.updatedAt = changedAt;
+    });
+  }
+
+  (db.activities || []).forEach(activity => {
+    if (activity.orderId === order.id && activity.undo && !activity.undo.used && String(activity.undo.action || '').startsWith('WARENEINGANG')) {
+      activity.undo.used = true;
+      activity.undo.usedBy = req.user.name;
+      activity.undo.usedAt = changedAt;
+    }
+  });
+
+  order.receivedAmount = 0;
+  order.receivedSheets = 0;
+  order.receivedBy = null;
+  order.receivedAt = null;
+  order.deliveredToShelf = '';
+  order.deliveries = [];
+  order.doneBy = null;
+  order.doneAt = null;
+  order.totalWeightKg = 0;
+  order.totalPrice = 0;
+  order.lastPackageWeightKg = null;
+  order.status = order.directIncoming ? 'BESTELLT' : 'BESTELLT';
+  order.deliveryRevertedBy = req.user.name;
+  order.deliveryRevertedAt = changedAt;
+  order.lastUpdate = changedAt;
+  const note = cleanText(req.body.note, '');
+  if (note) order.note = [order.note, `Lieferung rückgängig: ${note}`].filter(Boolean).join(' | ');
+
+  const activity = addActivity('KORREKTUR', `${req.user.name} hat Lieferung/Wareneingang für ${order.materialName} rückgängig gemacht. Die Bestellung bleibt offen stehen.${note ? ` Hinweis: ${note}` : ''}`, req.user, { orderId: order.id, materialIds: Array.from(touchedIds), undo: makeUndo('ORDER_DELIVERY_UNDO', snapshots, 'Lieferung-rückgängig Korrektur rückgängig') });
+  saveDb();
+  emitToAll('order:updated', { order, activity, message: `Lieferung rückgängig gemacht: ${order.materialName}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('material:changed', { activity, message: `Bestand durch Rücknahme der Lieferung aktualisiert: ${order.materialName}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('state:changed', { reason: 'order:delivery-undone' });
   res.json({ order });
 });
 

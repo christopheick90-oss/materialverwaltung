@@ -1,10 +1,9 @@
-# Eckl Eco Technics - Materialverwaltung V2.2
+# Eckl Eco Technics - Materialverwaltung V2.3
 
-## Wichtig in v2.2
-
-- Bestellung wird nach Datum und Lieferant gruppiert.
-- Lieferant kann nachträglich geändert werden.
-- Suche kombiniert Material + Stärke genauer, z. B. `S235 8` oder `1.4404 5`.
-- Materialfilter enthält Sonderformate.
-
-- Werkszeugnis direkt bei Bestellung und Wareneingang als PDF hochladbar; wird später beim Material übernommen.
+## Wichtig in v2.3
+- Lieferanten-Suche in Bestellungen fasst Treffer lieferantenweise zusammen.
+- In der Lieferanten-Suche steht das Datum direkt vor dem Material.
+- Lieferung / Wareneingang kann von Büro, Chef und Admin rückgängig gemacht werden.
+- Die Bestellung bleibt danach offen stehen und springt zurück auf Bestellt.
+- Büro, Chef und Admin können Material komplett ausbuchen, wenn es direkt weitergeht.
+- Master-Design bleibt unverändert.

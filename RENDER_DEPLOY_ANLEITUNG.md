@@ -1,5 +1,3 @@
-# Render Deploy V2.2
+# Render Deploy V2.3
 
-Normales Deployment wie bisher.
-
-- Werkszeugnis direkt bei Bestellung und Wareneingang als PDF hochladbar; wird später beim Material übernommen.
+Normales Render-Deployment wie bisher. Nach dem Upload bitte Cache leeren oder mit `?v=2.3` neu laden.

@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '2.2';
+const CLIENT_VERSION = '2.3';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -1253,6 +1253,7 @@ function materialCardHtml(m) {
         ${m.certificate ? `<button class="ghost mini" onclick="openMaterialCertificate('${jsString(m.id)}')">Werkszeugnis</button>` : ''}
         <button class="ghost mini" onclick="uploadMaterialCertificate('${jsString(m.id)}')">${m.certificate ? 'Werkszeugnis ändern' : 'Werkszeugnis PDF'}</button>
         ${canSeePrices() ? `<button class="ghost mini" onclick="openMaterialPriceModal('${jsString(m.id)}')">KG-Preis</button>` : ''}
+        ${state.permissions.canDirectWriteOff && (Number(m.stock) || Number(m.sheetStock) || Number(m.packageStock) || (Array.isArray(m.packageNumbers) && m.packageNumbers.length)) ? `<button class="secondary danger mini" onclick="openDirectWriteOffModal('${jsString(m.id)}')">Komplett ausbuchen</button>` : ''}
         ${canMoveMaterial(m) ? `<button class="secondary mini" onclick="openMoveMaterialModal('${jsString(m.id)}')">Verräumen</button>` : ''}
         ${state.permissions.canAdjustStock && !isKonsi(m) ? `<button class="secondary mini" onclick="openStockModal('${jsString(m.id)}','SET')">Bestand buchen</button>` : ''}
         ${!m.rest && state.permissions.canRequestOrder ? `<button class="primary mini" onclick="openOrderModal('${jsString(m.id)}'${isKonsi(m) ? ",'KONSI_REQUEST'" : ''})">Bestellung</button>` : (m.rest ? `<span class="badge gray">Resttafel</span>` : '')}
@@ -2111,7 +2112,39 @@ function groupOrdersByCustomer(orders) {
     .sort((a, b) => a.customerName.localeCompare(b.customerName, 'de'));
 }
 
+
+function orderSearchIsSupplierFocused(orders) {
+  const text = String(orderFilter.text || '').trim();
+  if (!text) return false;
+  return (orders || []).some(order => searchMatches(orderCustomerName(order), text));
+}
+
+function groupOrdersBySupplierAcrossDates(orders) {
+  return groupOrdersByCustomer(orders).map(group => ({
+    ...group,
+    orders: group.orders.sort((a, b) => new Date(orderSortDate(b) || 0) - new Date(orderSortDate(a) || 0))
+  }));
+}
+
+function renderOrdersGroupedBySupplier(orders, withActions) {
+  const suppliers = groupOrdersBySupplierAcrossDates(orders);
+  return suppliers.map(customer => {
+    const normalOrders = customer.orders.filter(o => o.storage !== 'KONSI');
+    const konsiOrders = customer.orders.filter(o => o.storage === 'KONSI');
+    const dates = Array.from(new Set(customer.orders.map(orderDayKey))).sort((a, b) => b.localeCompare(a));
+    const subtitle = `${customer.orders.length} Vorgang/Vorgänge · ${dates.length} Datum/Datumsangaben`;
+    return `<div class="order-day-group supplier-search-group">
+      <div class="order-day-head">
+        <div><h3>Lieferant: ${escapeHtml(customer.customerName)}</h3><div class="small muted">${escapeHtml(subtitle)} zusammengefasst</div></div>
+      </div>
+      ${normalOrders.length ? `<div class="order-subgroup-title"><strong>Bestellungen / Lieferungen</strong></div>${renderOrdersTable(normalOrders, withActions, { showDateBeforeMaterial: true, hideSupplierLine: true })}` : ''}
+      ${konsiOrders.length ? `<div class="order-subgroup-title konsi"><strong>Konsi separat</strong></div>${renderOrdersTable(konsiOrders, withActions, { showDateBeforeMaterial: true, hideSupplierLine: true })}` : ''}
+    </div>`;
+  }).join('');
+}
+
 function renderOrdersGrouped(orders, withActions) {
+  if (orderSearchIsSupplierFocused(orders)) return renderOrdersGroupedBySupplier(orders, withActions);
   const groups = groupOrdersByDay(orders);
   return groups.map(group => {
     const orderCount = group.orders.filter(o => !o.directIncoming).length;
@@ -2198,7 +2231,9 @@ function renderOrders() {
   });
 }
 
-function renderOrdersTable(orders, withActions) {
+function renderOrdersTable(orders, withActions, options = {}) {
+  const showDateBeforeMaterial = Boolean(options.showDateBeforeMaterial);
+  const hideSupplierLine = Boolean(options.hideSupplierLine);
   return `
     <table>
       <thead><tr><th>Status</th><th>Material</th><th>Menge</th><th>Info</th><th>Verlauf</th>${withActions ? '<th>Aktion</th>' : ''}</tr></thead>
@@ -2206,7 +2241,7 @@ function renderOrdersTable(orders, withActions) {
         ${orders.map(o => `
           <tr>
             <td>${o.directIncoming ? '<span class="badge green">Wareneingang</span>' : `${statusBadge(o.status)}${o.storage === 'KONSI' ? '<br><span class="badge red">Konsi</span>' : ''}${(o.manualOrder || o.manualRequest) ? '<br><span class="badge gray">Handeingabe</span>' : ''}`}</td>
-            <td><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}<div class="small muted">Lieferant: ${escapeHtml(orderCustomerName(o))}</div><div class="small muted">${o.directIncoming ? 'Erfasst von' : (o.manualOrder ? 'Bestellung erfasst von' : (o.manualRequest ? 'Per Handeingabe angefragt von' : 'Angefragt von'))} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}${o.manualOrder ? '<div class="small muted">Bestellung per Handeingabe</div>' : ''}${o.manualRequest ? '<div class="small muted">Freie Materialanfrage</div>' : ''}${orderConfirmationLabel(o)}${orderPriceLine(o)}</td>
+            <td>${showDateBeforeMaterial ? `<span class="badge gray">${escapeHtml(orderDayLabel(orderDayKey(o)))}</span><br>` : ''}<strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}${hideSupplierLine ? '' : `<div class="small muted">Lieferant: ${escapeHtml(orderCustomerName(o))}</div>`}<div class="small muted">${o.directIncoming ? 'Erfasst von' : (o.manualOrder ? 'Bestellung erfasst von' : (o.manualRequest ? 'Per Handeingabe angefragt von' : 'Angefragt von'))} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}${o.manualOrder ? '<div class="small muted">Bestellung per Handeingabe</div>' : ''}${o.manualRequest ? '<div class="small muted">Freie Materialanfrage</div>' : ''}${orderConfirmationLabel(o)}${orderPriceLine(o)}</td>
             <td>${o.directIncoming ? `Wareneingang: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : `Anfrage: <strong>${orderQuantityLabel(o, 'request')}</strong>${o.orderedAmount ? `<br>Bestellt: <strong>${orderQuantityLabel(o, 'ordered')}</strong>` : ''}${(Number(o.receivedAmount)||Number(o.receivedSheets)) ? `<br>Geliefert: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : ''}`}</td>
             <td class="order-note">${escapeHtml(o.note || '-')}</td>
             <td>${orderFlow(o.status)}<div class="small muted">Letzte Änderung: ${fmtDate(o.lastUpdate)}</div>${o.status === 'ERLEDIGT' ? `<div class="small muted">Geliefert: ${fmtDate(o.receivedAt || o.lastUpdate)}</div>` : ''}</td>
@@ -2229,6 +2264,7 @@ function renderOrderActions(order) {
   }
   if (state.permissions.canMarkOrdered && order.status === 'FREIGEGEBEN') actions.push(`<button class="primary mini" onclick="openOrderedModal('${jsString(order.id)}')">Bestellt</button>`);
   if (state.permissions.canMarkOrdered) actions.push(`<button class="ghost mini" onclick="openOrderSupplierModal('${jsString(order.id)}')">Lieferant ändern</button>`);
+  if (state.permissions.canCorrectIncoming && hasBookedIncoming) actions.push(`<button class="secondary danger mini" onclick="openUndoDeliveryModal('${jsString(order.id)}')">Geliefert rückgängig</button>`);
   if (state.permissions.canReceiveDelivery && (order.status === 'BESTELLT' || order.status === 'TEILGELIEFERT')) actions.push(`<button class="primary mini" onclick="openReceiveModal('${jsString(order.id)}')">Lieferung annehmen</button>`);
   return `<div class="row-actions">${actions.join('') || '<span class="small muted">Keine Aktion</span>'}</div>`;
 }
@@ -3669,7 +3705,58 @@ window.openStockModal = (materialId, action = 'REMOVE') => {
   });
 };
 
+
 window.openRemoveModal = (materialId) => window.openStockModal(materialId, 'REMOVE');
+
+window.openDirectWriteOffModal = (materialId) => {
+  if (!state.permissions.canDirectWriteOff) return showToast('Keine Berechtigung', 'Komplett ausbuchen ist nur für Büro, Chef und Admin sichtbar.');
+  const m = state.materials.find(x => x.id === materialId);
+  if (!m) return showToast('Material fehlt', 'Material wurde nicht gefunden.');
+  openModal(`
+    <h2>Material komplett ausbuchen</h2>
+    <p><strong>${escapeHtml(materialTitle(m))}</strong><br><span class="muted">Aktuelle Menge: ${quantityLabel(m)} · ${escapeHtml(materialLocationLabel(m))}</span></p>
+    <div class="notice form-full"><strong>Hinweis:</strong> Diese Funktion ist für Material gedacht, das direkt weitergeht. Der Bestand wird komplett auf 0 gesetzt und bleibt in der Historie rückverfolgbar.</div>
+    <form id="directWriteOffForm" class="form-grid">
+      <div class="form-full"><label>Bemerkung</label><textarea id="directWriteOffNote" placeholder="z. B. ging direkt an Auftrag / wurde sofort weitergegeben"></textarea></div>
+      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="secondary danger" type="submit">Komplett ausbuchen</button></div>
+    </form>
+  `);
+  $('#directWriteOffForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/materials/${encodeURIComponent(materialId)}/write-off`, { method: 'POST', body: JSON.stringify({ note: $('#directWriteOffNote').value }) });
+      closeModal();
+      showToast('Material ausgebucht', materialTitle(m));
+      await loadState(true);
+    } catch (error) { showToast('Fehler', error.message); }
+  });
+};
+
+window.openUndoDeliveryModal = (orderId) => {
+  if (!state.permissions.canCorrectIncoming) return showToast('Keine Berechtigung', 'Lieferungen rückgängig machen dürfen nur Büro, Chef oder Admin.');
+  const order = (state.orders || []).find(o => o.id === orderId);
+  if (!order) return showToast('Bestellung fehlt', 'Die Bestellung wurde nicht gefunden.');
+  openModal(`
+    <h2>Geliefert rückgängig machen</h2>
+    <p><strong>${escapeHtml(orderMaterialTitle(order))}</strong><br><span class="muted">${escapeHtml(orderQuantityLabel(order, 'received'))} · Lieferant: ${escapeHtml(orderCustomerName(order))}</span></p>
+    <div class="notice form-full"><strong>Hinweis:</strong> Der gebuchte Wareneingang wird aus dem Bestand zurückgerechnet. Die Bestellung bleibt in der Bestellübersicht stehen und springt wieder auf <strong>Bestellt</strong>.</div>
+    <form id="undoDeliveryForm" class="form-grid">
+      <div class="form-full"><label>Bemerkung</label><textarea id="undoDeliveryNote" placeholder="optional, z. B. falsch gebucht / falsche Lieferung"></textarea></div>
+      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="secondary danger" type="submit">Geliefert rückgängig</button></div>
+    </form>
+  `);
+  $('#undoDeliveryForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/orders/${encodeURIComponent(orderId)}/undo-delivery`, { method: 'POST', body: JSON.stringify({ note: $('#undoDeliveryNote').value }) });
+      closeModal();
+      showToast('Lieferung rückgängig', orderMaterialTitle(order));
+      await loadState(true);
+      currentPage = 'orders';
+      render();
+    } catch (error) { showToast('Fehler', error.message); }
+  });
+};
 
 window.openOrderModal = (materialId = '', initialMode = '') => {
   const canRequest = Boolean(state.permissions.canRequestOrder);
