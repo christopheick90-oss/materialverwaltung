@@ -217,7 +217,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '2.4';
+const PROGRAM_VERSION = '2.5';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -1245,7 +1245,7 @@ function normalizeSettings(raw = {}) {
 function defaultDb() {
   const created = nowIso();
   return {
-    version: 24,
+    version: 26,
     users: [
       { id: 'u_admin', username: 'admin', password: 'admin123', name: 'Systemzugang', role: 'ADMIN', active: true, mustChangePassword: false, createdAt: created, updatedAt: created, lastLogin: null },
       { id: 'u_laser', username: 'laser', password: 'laser123', name: 'Laser Arbeitsplatz', role: 'LASER', active: true, mustChangePassword: false, createdAt: created, updatedAt: created, lastLogin: null },
@@ -1533,7 +1533,7 @@ function migrateDb(db) {
   db.inventories = db.inventories.map(normalizeInventorySession).filter(Boolean);
   const normalizedSettings = normalizeSettings(db.settings || {});
   if (JSON.stringify(db.settings || {}) !== JSON.stringify(normalizedSettings)) { db.settings = normalizedSettings; changed = true; }
-  if (db.version !== 25) { db.version = 25; changed = true; }
+  if (db.version !== 26) { db.version = 26; changed = true; }
   if (changed) saveDb(db);
   return db;
 }
@@ -2228,6 +2228,7 @@ function buildState(user) {
       canManagePrices: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canCorrectIncoming: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canDirectWriteOff: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
+      canManageWrittenOff: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canViewWrittenOff: ['LASER', 'BUERO', 'CHEF', 'ADMIN'].includes(user.role)
     }
   };
@@ -2767,6 +2768,157 @@ app.get('/api/written-off/:id/documents/:fileId', requireAuth, allowRoles('LASER
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${safePdfFileName(doc.originalName)}"`);
   res.sendFile(filePath);
+});
+
+
+function writeWrittenOffDocumentPdf(entry, upload, user, options) {
+  const kind = options.kind || 'CONFIRMATION';
+  const type = options.type || 'AB';
+  const label = options.label || 'PDF';
+  const base = cleanText(`${type}_${entry.id || 'ausgebucht'}`, 'ausgebucht').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 80) || 'ausgebucht';
+  const fileName = `${base}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}.pdf`;
+  fs.writeFileSync(pdfPathForKind(kind, fileName), upload.buffer);
+  return normalizeWrittenOffDocument({
+    id: uid(type.toLowerCase()),
+    fileName,
+    originalName: upload.originalName,
+    size: upload.buffer.length,
+    uploadedBy: user.name,
+    uploadedByRole: user.role,
+    uploadedAt: nowIso(),
+    kind,
+    type,
+    label,
+    sourceDateKey: entry.sourceDateKey || '',
+    sourceCustomerKey: entry.sourceCustomerKey || '',
+    sourceCustomerName: entry.sourceCustomerName || entry.supplier || ''
+  }, type.toLowerCase());
+}
+
+app.post('/api/written-off/:id/certificate', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const entry = (db.writtenOffMaterials || []).find(item => item.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Ausgebuchtes Material wurde nicht gefunden.' });
+  let upload;
+  try { upload = readPdfUpload(req.body); } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
+  if (entry.certificate && entry.certificate.fileName) removePdfFile('CERTIFICATE', entry.certificate.fileName);
+  entry.certificate = writeCertificatePdf(entry.id || entry.materialId || 'ausgebucht', upload, req.user);
+  const activity = addActivity('AUSGEBUCHT', `${req.user.name} hat ein Werkszeugnis zu ausgebuchtem Material ${materialTitleText({ name: entry.materialName, thickness: entry.materialThickness })} hochgeladen.`, req.user, { writtenOffId: entry.id });
+  saveDb();
+  emitToAll('state:changed', { reason: 'written-off:certificate' });
+  res.json({ writtenOffMaterial: redactWrittenOffForUser(entry, req.user), activity });
+});
+
+app.post('/api/written-off/:id/confirmation', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const entry = (db.writtenOffMaterials || []).find(item => item.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Ausgebuchtes Material wurde nicht gefunden.' });
+  let upload;
+  try { upload = readPdfUpload(req.body); } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
+  if (!Array.isArray(entry.documents)) entry.documents = [];
+  const doc = writeWrittenOffDocumentPdf(entry, upload, req.user, { kind: 'CONFIRMATION', type: 'AB', label: 'Auftragsbestätigung' });
+  entry.documents.unshift(doc);
+  const activity = addActivity('AUSGEBUCHT', `${req.user.name} hat eine Auftragsbestätigung zu ausgebuchtem Material ${materialTitleText({ name: entry.materialName, thickness: entry.materialThickness })} hochgeladen.`, req.user, { writtenOffId: entry.id });
+  saveDb();
+  emitToAll('state:changed', { reason: 'written-off:confirmation' });
+  res.json({ writtenOffMaterial: redactWrittenOffForUser(entry, req.user), activity });
+});
+
+app.post('/api/written-off/:id/delivery-note', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const entry = (db.writtenOffMaterials || []).find(item => item.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Ausgebuchtes Material wurde nicht gefunden.' });
+  let upload;
+  try { upload = readPdfUpload(req.body); } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
+  if (!Array.isArray(entry.documents)) entry.documents = [];
+  const doc = writeWrittenOffDocumentPdf(entry, upload, req.user, { kind: 'DELIVERY_NOTE', type: 'LS', label: 'Lieferschein' });
+  entry.documents.unshift(doc);
+  const activity = addActivity('AUSGEBUCHT', `${req.user.name} hat einen Lieferschein zu ausgebuchtem Material ${materialTitleText({ name: entry.materialName, thickness: entry.materialThickness })} hochgeladen.`, req.user, { writtenOffId: entry.id });
+  saveDb();
+  emitToAll('state:changed', { reason: 'written-off:delivery-note' });
+  res.json({ writtenOffMaterial: redactWrittenOffForUser(entry, req.user), activity });
+});
+
+app.patch('/api/written-off/:id', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  const entry = (db.writtenOffMaterials || []).find(item => item.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Ausgebuchtes Material wurde nicht gefunden.' });
+  const before = { ...entry };
+  entry.materialName = normalizeMaterialName(cleanText(req.body.materialName || entry.materialName, entry.materialName));
+  entry.materialThickness = normalizeThickness(req.body.materialThickness || entry.materialThickness);
+  entry.materialFormat = normalizeFormat(req.body.materialFormat || entry.materialFormat);
+  entry.supplier = normalizeCustomerName(req.body.supplier !== undefined ? req.body.supplier : entry.supplier);
+  entry.shelf = normalizeShelf(req.body.shelf !== undefined ? req.body.shelf : entry.shelf);
+  entry.compartment = cleanText(req.body.compartment !== undefined ? req.body.compartment : entry.compartment, '');
+  entry.articleNumber = normalizeArticleNumber(req.body.articleNumber !== undefined ? req.body.articleNumber : entry.articleNumber);
+  entry.quantityBefore = cleanText(req.body.quantityBefore !== undefined ? req.body.quantityBefore : entry.quantityBefore, '');
+  entry.note = cleanText(req.body.note !== undefined ? req.body.note : entry.note, '');
+  entry.totalWeightKg = req.body.totalWeightKg === '' || req.body.totalWeightKg === null || req.body.totalWeightKg === undefined ? 0 : Math.max(0, numberOr(req.body.totalWeightKg, 0));
+  entry.kgPrice = req.body.kgPrice === '' || req.body.kgPrice === null || req.body.kgPrice === undefined ? null : Math.max(0, numberOr(req.body.kgPrice, 0));
+  entry.totalPrice = entry.kgPrice !== null && entry.totalWeightKg > 0 ? entry.kgPrice * entry.totalWeightKg : 0;
+  const activity = addActivity('AUSGEBUCHT', `${req.user.name} hat die ausgebuchte Materialkarte ${materialTitleText({ name: before.materialName, thickness: before.materialThickness })} bearbeitet.`, req.user, { writtenOffId: entry.id });
+  saveDb();
+  emitToAll('state:changed', { reason: 'written-off:edit' });
+  res.json({ writtenOffMaterial: redactWrittenOffForUser(entry, req.user), activity });
+});
+
+app.post('/api/written-off/:id/restore', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  if (!Array.isArray(db.writtenOffMaterials)) db.writtenOffMaterials = [];
+  const index = db.writtenOffMaterials.findIndex(item => item.id === req.params.id);
+  if (index < 0) return res.status(404).json({ error: 'Ausgebuchtes Material wurde nicht gefunden.' });
+  const entry = db.writtenOffMaterials[index];
+  let material = db.materials.find(m => m.id === entry.materialId);
+  const restoredAt = nowIso();
+  if (!material) {
+    material = normalizeMaterial({
+      id: entry.materialId || uid('m'),
+      name: entry.materialName,
+      thickness: entry.materialThickness,
+      format: entry.materialFormat,
+      unit: entry.storage === 'KONSI' ? 'Pakete' : 'Tafeln',
+      stock: entry.stockBefore,
+      sheetStock: entry.sheetStockBefore,
+      packageStock: entry.packageStockBefore,
+      packageNumbers: entry.packageNumbersBefore,
+      storage: entry.storage,
+      shelf: entry.shelf,
+      compartment: entry.compartment,
+      supplier: entry.supplier || entry.sourceCustomerName,
+      articleNumber: entry.articleNumber,
+      note: entry.note,
+      kgPrice: entry.kgPrice,
+      certificate: entry.certificate,
+      archived: false,
+      createdAt: restoredAt,
+      updatedAt: restoredAt
+    });
+    db.materials.push(material);
+  } else {
+    material.name = entry.materialName;
+    material.thickness = entry.materialThickness;
+    material.format = entry.materialFormat;
+    material.storage = entry.storage;
+    material.shelf = entry.shelf;
+    material.compartment = entry.compartment;
+    material.supplier = entry.supplier || entry.sourceCustomerName || material.supplier || '';
+    material.articleNumber = entry.articleNumber || material.articleNumber || '';
+    material.stock = Math.max(0, numberOr(entry.stockBefore, 0));
+    material.sheetStock = Math.max(0, numberOr(entry.sheetStockBefore, 0));
+    material.packageStock = Math.max(0, numberOr(entry.packageStockBefore, 0));
+    material.packageNumbers = normalizePackageNumbers(entry.packageNumbersBefore);
+    material.kgPrice = entry.kgPrice;
+    material.certificate = entry.certificate || material.certificate || null;
+    material.archived = false;
+    material.archiveReason = '';
+    material.archivedAt = null;
+    material.archivedBy = '';
+    material.deliveryPending = false;
+    material.deliveryStatus = '';
+    material.updatedAt = restoredAt;
+  }
+  db.writtenOffMaterials.splice(index, 1);
+  const note = cleanText(req.body.note, '');
+  const activity = addActivity('AUSGEBUCHT', `${req.user.name} hat ausgebuchtes Material ${materialTitleText(material)} rückgängig gemacht und wieder in die Materialliste übernommen.${note ? ` Hinweis: ${note}` : ''}`, req.user, { materialId: material.id, writtenOffId: entry.id });
+  saveDb();
+  emitToAll('material:changed', { material, activity, message: `Ausbuchung rückgängig: ${materialTitleText(material)}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+  emitToAll('state:changed', { reason: 'written-off:restore' });
+  res.json({ material: redactMaterialForUser(material, req.user), activity });
 });
 
 app.post('/api/materials/:id/price', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
@@ -4301,7 +4453,7 @@ function clearOperationalDatabaseForAdmin(user, backup, counts = {}) {
   const preservedSettings = normalizeSettings(db.settings || defaultSettings());
   const created = nowIso();
   db = {
-    version: 24,
+    version: 26,
     users: preservedUsers,
     sessions: preservedSessions,
     materials: [],

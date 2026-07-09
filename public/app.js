@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '2.4';
+const CLIENT_VERSION = '2.5';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -93,6 +93,10 @@ function formatMoney(value) {
 
 function canSeePrices() {
   return Boolean(state && state.permissions && state.permissions.canManagePrices);
+}
+
+function canManageWrittenOff() {
+  return Boolean(state && state.permissions && (state.permissions.canManageWrittenOff || state.permissions.canDirectWriteOff));
 }
 
 function orderPriceLine(order) {
@@ -2304,34 +2308,45 @@ function filteredWrittenOffList() {
 
 function writtenOffDocumentButtons(item) {
   const docs = Array.isArray(item.documents) ? item.documents : [];
-  if (!docs.length) return '<div class="small muted">Keine AB/Lieferschein-PDF übernommen.</div>';
+  if (!docs.length) return '';
   return `<div class="written-off-docs">
     ${docs.map(doc => `<button class="ghost mini" onclick="openWrittenOffDocument('${jsString(item.id)}','${jsString(doc.id || doc.fileName)}')">${escapeHtml(doc.label || doc.type || 'PDF')}</button>`).join('')}
   </div>`;
 }
 
+function writtenOffStatusBadge(item) {
+  return `<span class="badge gray">Ausgebucht</span>`;
+}
+
 function renderWrittenOffCard(item) {
+  const fill = 0;
   const priceLine = canSeePrices() ? [
     item.kgPrice !== undefined && item.kgPrice !== null && item.kgPrice !== '' ? `KG-Preis: ${formatKgPrice(item.kgPrice)}` : '',
     Number(item.totalWeightKg) > 0 ? `Gewicht: ${String(Number(item.totalWeightKg).toFixed(1)).replace('.', ',')} kg` : '',
     Number(item.totalPrice) > 0 ? `Wert: ${formatMoney(item.totalPrice)}` : ''
   ].filter(Boolean).join(' · ') : '';
   return `<div class="material-card written-off-card">
-    <div class="card-topline"><span class="badge gray">Ausgebucht</span><span>${escapeHtml(fmtDate(item.writtenOffAt))}</span></div>
-    <h3>${escapeHtml(writtenOffTitle(item))}</h3>
-    <div class="meta-grid">
-      <div><span>Format</span><strong>${escapeHtml(item.materialFormat || '-')}</strong></div>
-      <div><span>Vorher</span><strong>${escapeHtml(item.quantityBefore || `${item.stockBefore || 0}`)}</strong></div>
+    <div class="material-head"><h3>${escapeHtml(writtenOffTitle(item))}</h3>${writtenOffStatusBadge(item)}</div>
+    <div class="meta compact-material">
+      <div><span>Menge vorher</span><strong>${escapeHtml(item.quantityBefore || `${item.stockBefore || 0}`)}</strong></div>
+      <div><span>Format</span><strong>${escapeHtml(formatDisplayValue(item.materialFormat || '-'))}</strong></div>
       <div><span>Lieferant</span><strong>${escapeHtml(item.supplier || item.sourceCustomerName || 'Ohne Lieferant')}</strong></div>
       <div><span>Ablage vorher</span><strong>${escapeHtml([item.shelf, item.compartment].filter(Boolean).join(' · ') || '-')}</strong></div>
+      <div><span>Ausgebucht</span><strong>${escapeHtml(fmtDate(item.writtenOffAt))}</strong></div>
       ${item.articleNumber ? `<div><span>Teilenr.</span><strong>${escapeHtml(item.articleNumber)}</strong></div>` : ''}
       ${priceLine ? `<div class="form-full"><span>Preis</span><strong>${escapeHtml(priceLine)}</strong></div>` : ''}
     </div>
+    <div class="stock-fill"><span style="width:${fill}%"></span></div>
     <div class="small muted">Ausgebucht von ${escapeHtml(item.writtenOffBy || '-')} · Quelle: ${escapeHtml(item.sourceCustomerName || item.supplier || 'Ohne Lieferant')}${item.sourceDateKey ? ` · ${escapeHtml(orderDayLabel(item.sourceDateKey))}` : ''}</div>
     ${item.note ? `<div class="notice small">${escapeHtml(item.note)}</div>` : ''}
+    ${writtenOffDocumentButtons(item)}
     <div class="actions">
-      ${item.certificate ? `<button class="ghost mini" onclick="openWrittenOffCertificate('${jsString(item.id)}')">Werkszeugnis</button>` : '<span class="small muted">Kein Werkszeugnis</span>'}
-      ${writtenOffDocumentButtons(item)}
+      ${item.certificate ? `<button class="ghost mini" onclick="openWrittenOffCertificate('${jsString(item.id)}')">Werkszeugnis</button>` : ''}
+      ${canManageWrittenOff() ? `<button class="ghost mini" onclick="uploadWrittenOffCertificate('${jsString(item.id)}')">${item.certificate ? 'Werkszeugnis ändern' : 'Werkszeugnis PDF'}</button>` : ''}
+      ${canManageWrittenOff() ? `<button class="ghost mini" onclick="uploadWrittenOffConfirmation('${jsString(item.id)}')">AB PDF</button>` : ''}
+      ${canManageWrittenOff() ? `<button class="ghost mini" onclick="uploadWrittenOffDeliveryNote('${jsString(item.id)}')">Lieferschein PDF</button>` : ''}
+      ${canManageWrittenOff() ? `<button class="ghost mini" onclick="openWrittenOffEditModal('${jsString(item.id)}')">Bearbeiten</button>` : ''}
+      ${canManageWrittenOff() ? `<button class="secondary danger mini" onclick="openWrittenOffRestoreModal('${jsString(item.id)}')">Rückgängig</button>` : ''}
     </div>
   </div>`;
 }
@@ -2360,6 +2375,108 @@ window.openWrittenOffCertificate = (id) => {
 window.openWrittenOffDocument = (id, fileId) => {
   if (!token) return showToast('Nicht angemeldet', 'Bitte neu anmelden.');
   window.open(`/api/written-off/${encodeURIComponent(id)}/documents/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`, '_blank');
+};
+
+
+async function uploadWrittenOffPdf(id, endpoint, title) {
+  if (!canManageWrittenOff()) return showToast('Keine Berechtigung', 'Ausgebuchte Materialien dürfen nur Büro, Chef und Admin bearbeiten.');
+  const item = (state.writtenOffMaterials || []).find(x => x.id === id);
+  if (!item) return showToast('Ausgebucht fehlt', 'Die Materialkarte wurde nicht gefunden.');
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf,.pdf';
+  input.addEventListener('change', async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      const data = await readPdfFileAsDataUrl(file);
+      await api(`/api/written-off/${encodeURIComponent(id)}/${endpoint}`, { method: 'POST', body: JSON.stringify({ fileName: file.name, data }) });
+      showToast(`${title} gespeichert`, writtenOffTitle(item));
+      await loadState(true);
+      currentPage = 'writtenOff';
+      renderCurrentPage();
+    } catch (err) { showToast('Upload fehlgeschlagen', err.message || 'Die PDF konnte nicht gespeichert werden.'); }
+  });
+  input.click();
+}
+
+window.uploadWrittenOffCertificate = (id) => uploadWrittenOffPdf(id, 'certificate', 'Werkszeugnis');
+window.uploadWrittenOffConfirmation = (id) => uploadWrittenOffPdf(id, 'confirmation', 'Auftragsbestätigung');
+window.uploadWrittenOffDeliveryNote = (id) => uploadWrittenOffPdf(id, 'delivery-note', 'Lieferschein');
+
+window.openWrittenOffEditModal = (id) => {
+  if (!canManageWrittenOff()) return showToast('Keine Berechtigung', 'Ausgebuchte Materialien dürfen nur Büro, Chef und Admin bearbeiten.');
+  const item = (state.writtenOffMaterials || []).find(x => x.id === id);
+  if (!item) return showToast('Ausgebucht fehlt', 'Die Materialkarte wurde nicht gefunden.');
+  openModal(`
+    <h2>Ausgebuchte Materialkarte bearbeiten</h2>
+    <p><strong>${escapeHtml(writtenOffTitle(item))}</strong><br><span class="muted">Änderungen gelten nur für den Reiter Ausgebucht.</span></p>
+    <form id="writtenOffEditForm" class="form-grid">
+      <div><label>Material</label><input id="woName" value="${escapeHtml(item.materialName || '')}" required></div>
+      <div><label>Stärke</label><input id="woThickness" value="${escapeHtml(item.materialThickness || '')}" placeholder="z. B. 8"></div>
+      <div><label>Format</label><input id="woFormat" value="${escapeHtml(item.materialFormat || '')}" placeholder="z. B. 3000x1500"></div>
+      <div><label>Lieferant</label><input id="woSupplier" value="${escapeHtml(item.supplier || item.sourceCustomerName || '')}"></div>
+      <div><label>Ablage vorher</label><select id="woShelf">${defaultShelves.map(shelf => `<option value="${escapeHtml(shelf)}" ${String(item.shelf || '') === shelf ? 'selected' : ''}>${escapeHtml(shelf)}</option>`).join('')}</select></div>
+      <div><label>Regal / Platz</label><input id="woCompartment" value="${escapeHtml(item.compartment || '')}"></div>
+      <div><label>Teilenr.</label><input id="woArticle" value="${escapeHtml(item.articleNumber || '')}"></div>
+      <div><label>Menge vorher</label><input id="woQty" value="${escapeHtml(item.quantityBefore || '')}" placeholder="z. B. 3 Tafeln"></div>
+      ${canSeePrices() ? `<div><label>Gewicht kg</label><input id="woWeight" type="number" step="0.01" min="0" value="${item.totalWeightKg || ''}"></div><div><label>KG-Preis €/kg</label><input id="woKgPrice" type="number" step="0.01" min="0" value="${item.kgPrice ?? ''}" placeholder="leer = entfernen"></div>` : ''}
+      <div class="form-full"><label>Bemerkung</label><textarea id="woNote">${escapeHtml(item.note || '')}</textarea></div>
+      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="secondary" type="submit">Speichern</button></div>
+    </form>
+  `);
+  $('#writtenOffEditForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/written-off/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          materialName: $('#woName').value,
+          materialThickness: $('#woThickness').value,
+          materialFormat: $('#woFormat').value,
+          supplier: $('#woSupplier').value,
+          shelf: $('#woShelf').value,
+          compartment: $('#woCompartment').value,
+          articleNumber: $('#woArticle').value,
+          quantityBefore: $('#woQty').value,
+          totalWeightKg: $('#woWeight') ? $('#woWeight').value : undefined,
+          kgPrice: $('#woKgPrice') ? $('#woKgPrice').value : undefined,
+          note: $('#woNote').value
+        })
+      });
+      closeModal();
+      showToast('Ausgebucht bearbeitet', writtenOffTitle(item));
+      await loadState(true);
+      currentPage = 'writtenOff';
+      renderCurrentPage();
+    } catch (err) { showToast('Fehler', err.message || 'Änderung konnte nicht gespeichert werden.'); }
+  });
+};
+
+window.openWrittenOffRestoreModal = (id) => {
+  if (!canManageWrittenOff()) return showToast('Keine Berechtigung', 'Ausbuchungen rückgängig machen dürfen nur Büro, Chef und Admin.');
+  const item = (state.writtenOffMaterials || []).find(x => x.id === id);
+  if (!item) return showToast('Ausgebucht fehlt', 'Die Materialkarte wurde nicht gefunden.');
+  openModal(`
+    <h2>Ausbuchung rückgängig machen</h2>
+    <p><strong>${escapeHtml(writtenOffTitle(item))}</strong><br><span class="muted">Das Material wird wieder in die normale Materialliste übernommen.</span></p>
+    <div class="notice form-full"><strong>Hinweis:</strong> Der alte Bestand wird aus der Ausgebucht-Karte wiederhergestellt. Die Karte verschwindet danach aus Ausgebucht.</div>
+    <form id="writtenOffRestoreForm" class="form-grid">
+      <div class="form-full"><label>Bemerkung</label><textarea id="woRestoreNote" placeholder="optional"></textarea></div>
+      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="secondary danger" type="submit">Rückgängig machen</button></div>
+    </form>
+  `);
+  $('#writtenOffRestoreForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/written-off/${encodeURIComponent(id)}/restore`, { method: 'POST', body: JSON.stringify({ note: $('#woRestoreNote').value }) });
+      closeModal();
+      showToast('Ausbuchung rückgängig', writtenOffTitle(item));
+      await loadState(true);
+      currentPage = 'writtenOff';
+      renderCurrentPage();
+    } catch (err) { showToast('Fehler', err.message || 'Ausbuchung konnte nicht rückgängig gemacht werden.'); }
+  });
 };
 
 

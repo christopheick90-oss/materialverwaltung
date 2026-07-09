@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "2.4.0",
-  "description": "Eckl Eco Technics Materialverwaltung V2.4 - Lieferanten-Suche, Lieferung rückgängig und Direkt-Ausbuchung",
+  "version": "2.5.0",
+  "description": "Eckl Eco Technics Materialverwaltung V2.5 - Lieferanten-Suche, Lieferung rückgängig und Direkt-Ausbuchung",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",
