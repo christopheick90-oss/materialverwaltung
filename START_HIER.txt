@@ -1,2 +1,1 @@
-Eckl Eco Technics Materialverwaltung V2.0
-Start: 3_BROWSER_SERVER_TESTEN.bat
+Eckl Eco Technics Materialverwaltung V2.2

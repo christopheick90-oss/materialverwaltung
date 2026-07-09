@@ -1,8 +1,10 @@
-# Eckl Eco Technics - Materialverwaltung V2.0
+# Eckl Eco Technics - Materialverwaltung V2.2
 
-## Wichtig in v2.0
-- Konsi hat eigene AB- und Lieferschein-PDFs statt Konsi-PDF.
-- Kundenblöcke in Bestellungen sind stärker im Master-Design hervorgehoben.
-- Normale Bestellung und Konsi bleiben getrennt nach Datum und Kunde.
+## Wichtig in v2.2
 
-Start: ZIP entpacken und `3_BROWSER_SERVER_TESTEN.bat` starten.
+- Bestellung wird nach Datum und Lieferant gruppiert.
+- Lieferant kann nachträglich geändert werden.
+- Suche kombiniert Material + Stärke genauer, z. B. `S235 8` oder `1.4404 5`.
+- Materialfilter enthält Sonderformate.
+
+- Werkszeugnis direkt bei Bestellung und Wareneingang als PDF hochladbar; wird später beim Material übernommen.

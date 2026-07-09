@@ -1,3 +1,5 @@
-# Render Deploy V2.0
+# Render Deploy V2.2
 
-Normales Deploy wie bisher. Datenordner beibehalten.
+Normales Deployment wie bisher.
+
+- Werkszeugnis direkt bei Bestellung und Wareneingang als PDF hochladbar; wird später beim Material übernommen.

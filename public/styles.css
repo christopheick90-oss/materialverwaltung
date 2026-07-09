@@ -292,7 +292,7 @@ button.active-filter{background:#222!important;color:#fff!important;border-color
 .order-day-group table{margin:0;border:0}.order-day-group th:first-child,.order-day-group td:first-child{padding-left:14px}.order-day-group th:last-child,.order-day-group td:last-child{padding-right:14px}
 @media(max-width:900px){.order-day-head{display:grid}.ab-item{grid-template-columns:1fr}.ab-item button{width:max-content}}
 
-/* V1.8: Kunden-Gruppierung in Bestellungen */
+/* V2.2: Lieferanten-Gruppierung in Bestellungen */
 .order-customer-group{background:#fff;border:1px solid #ddd;margin:14px 0;padding:0 14px 14px;box-shadow:0 6px 16px rgba(0,0,0,.06);border-radius:14px;overflow:hidden}
 .order-customer-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;background:linear-gradient(180deg,#3a3a3a,#1a1a1a);color:#fff;border-bottom:4px solid var(--red);padding:13px 15px;margin:0 -14px 12px}
 .order-customer-head h4{margin:0;font-size:21px}.order-customer-head .muted{color:#ddd}.order-customer-head .ghost{background:#fff;color:#111;border-color:#fff}

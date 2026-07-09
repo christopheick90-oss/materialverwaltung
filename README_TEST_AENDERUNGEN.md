@@ -1,7 +1,8 @@
-# Teständerungen V2.0
+# Teständerungen V2.2
 
-- Konsi: AB PDF hochladen und abrufen.
-- Konsi: Lieferschein PDF hochladen und abrufen.
-- Keine neue Konsi-PDF-Anzeige mehr.
-- Kunden-Header in Bestellungen wie Datums-Header gestaltet.
-- Master-Design beibehalten.
+- Kunde wurde in der Oberfläche zu Lieferant geändert.
+- Lieferant kann bei Bestellungen nachträglich geändert werden.
+- Stärken-Suche filtert Zahlen wie 8 oder 5 als mm-Stärke.
+- Sonderformate können über einen eigenen Button gefiltert werden.
+
+- Werkszeugnis direkt bei Bestellung und Wareneingang als PDF hochladbar; wird später beim Material übernommen.

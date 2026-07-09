@@ -179,6 +179,15 @@ function normalizePackageNumbers(value) {
   return list.map(v => cleanText(v)).filter(Boolean);
 }
 
+function removePackageNumbersOnce(list, numbersToRemove) {
+  const remaining = normalizePackageNumbers(list);
+  normalizePackageNumbers(numbersToRemove).forEach(number => {
+    const index = remaining.indexOf(number);
+    if (index >= 0) remaining.splice(index, 1);
+  });
+  return remaining;
+}
+
 function normalizeStrengthList(value) {
   const list = Array.isArray(value) ? value : String(value || '').split(/[\n;]+/);
   return Array.from(new Set(list.map(v => normalizeThickness(v)).filter(Boolean)));
@@ -208,7 +217,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '2.0';
+const PROGRAM_VERSION = '2.2';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -289,6 +298,44 @@ function readPdfUpload(body) {
   if (buffer.length > MAX_ORDER_CONFIRMATION_BYTES) { const err = new Error('Die PDF ist zu groß. Maximal 15 MB.'); err.statusCode = 400; throw err; }
   if (buffer.slice(0, 4).toString('utf8') !== '%PDF') { const err = new Error('Bitte eine echte PDF-Datei hochladen.'); err.statusCode = 400; throw err; }
   return { originalName, buffer };
+}
+
+function optionalCertificateUploadFromBody(body) {
+  const data = cleanText(body && (body.certificateData || body.werkszeugnisData || body.warenzeugnisData), '');
+  if (!data) return null;
+  const fileName = body && (body.certificateFileName || body.werkszeugnisFileName || body.warenzeugnisFileName || 'werkszeugnis.pdf');
+  return readPdfUpload({ fileName, data });
+}
+
+function writeCertificatePdf(baseId, upload, user) {
+  const base = cleanText(baseId, 'wz').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 80) || 'wz';
+  const fileName = `${base}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}.pdf`;
+  fs.writeFileSync(pdfPathForKind('CERTIFICATE', fileName), upload.buffer);
+  return {
+    id: uid('wz'),
+    fileName,
+    originalName: upload.originalName,
+    size: upload.buffer.length,
+    uploadedBy: user.name,
+    uploadedByRole: user.role,
+    uploadedAt: nowIso()
+  };
+}
+
+function assignMaterialCertificate(material, upload, user) {
+  if (!material) return null;
+  if (material.certificate && material.certificate.fileName) removePdfFile('CERTIFICATE', material.certificate.fileName);
+  const record = writeCertificatePdf(material.id || material.name || 'material', upload, user);
+  material.certificate = record;
+  material.updatedAt = record.uploadedAt;
+  return record;
+}
+
+function applyPendingCertificateToMaterial(material, certificate) {
+  if (!material || !certificate || !certificate.fileName) return false;
+  material.certificate = normalizePdfRecord(certificate, 'wz');
+  material.updatedAt = material.certificate.uploadedAt || nowIso();
+  return true;
 }
 
 function normalizePdfRecord(raw, prefix = 'pdf') {
@@ -383,7 +430,7 @@ function uploadCustomerDocument(req, res, options) {
     if (options.excludeStorage && order.storage === options.excludeStorage) return false;
     return true;
   });
-  if (!groupOrders.length) return res.status(404).json({ error: 'Für diesen Kunden und dieses Datum wurde kein passender Vorgang gefunden.' });
+  if (!groupOrders.length) return res.status(404).json({ error: 'Für diesen Lieferanten und dieses Datum wurde kein passender Vorgang gefunden.' });
   let upload;
   try { upload = readPdfUpload(req.body); } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
   const fileName = `${options.filePrefix}_${day}_${customerKey}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}.pdf`;
@@ -455,15 +502,17 @@ function sendDayDocument(req, res, options) {
 }
 
 
-const DEFAULT_CUSTOMER_GROUP = 'Ohne Kunde';
+const DEFAULT_CUSTOMER_GROUP = 'Ohne Lieferant';
 
 function normalizeCustomerName(value) {
   const text = cleanText(value, '').replace(/\s+/g, ' ').slice(0, 100);
-  return text || DEFAULT_CUSTOMER_GROUP;
+  if (!text || /^ohne\s+kunde$/i.test(text)) return DEFAULT_CUSTOMER_GROUP;
+  return text;
 }
 
 function normalizeCustomerKey(value) {
   const name = normalizeCustomerName(value);
+  if (name === DEFAULT_CUSTOMER_GROUP) return 'ohne_kunde';
   const normalized = name.normalize ? name.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : name;
   return normalized
     .toLowerCase()
@@ -474,11 +523,11 @@ function normalizeCustomerKey(value) {
 }
 
 function orderCustomerName(order) {
-  return normalizeCustomerName(order && (order.customerName || order.customer || order.kunde));
+  return normalizeCustomerName(order && (order.supplierName || order.lieferant || order.customerName || order.customer || order.kunde));
 }
 
 function orderCustomerKey(order) {
-  return normalizeCustomerKey(order && (order.customerKey || order.customerName || order.customer || order.kunde));
+  return normalizeCustomerKey(order && (order.supplierKey || order.supplierName || order.lieferant || order.customerKey || order.customerName || order.customer || order.kunde));
 }
 
 function orderDayKey(order) {
@@ -1281,6 +1330,8 @@ function migrateDb(db) {
       confirmation: null,
       customerName: DEFAULT_CUSTOMER_GROUP,
       customerKey: 'ohne_kunde',
+      supplierName: DEFAULT_CUSTOMER_GROUP,
+      supplierKey: 'ohne_kunde',
       storage: material ? material.storage : 'HAUPTLAGER',
       ...order
     };
@@ -1288,6 +1339,8 @@ function migrateDb(db) {
     if (!['ANGEFORDERT', 'BESTELLT', 'TEILGELIEFERT', 'ERLEDIGT', 'ABGELEHNT'].includes(normalizedOrder.status)) normalizedOrder.status = 'ANGEFORDERT';
     normalizedOrder.customerName = orderCustomerName(normalizedOrder);
     normalizedOrder.customerKey = orderCustomerKey(normalizedOrder);
+    normalizedOrder.supplierName = normalizedOrder.customerName;
+    normalizedOrder.supplierKey = normalizedOrder.customerKey;
     if (normalizedOrder.konsiOrder === true) normalizedOrder.storage = 'KONSI';
     normalizedOrder.receivedAmount = Math.max(0, numberOr(normalizedOrder.receivedAmount, 0));
     normalizedOrder.receivedSheets = Math.max(0, numberOr(normalizedOrder.receivedSheets, 0));
@@ -1969,7 +2022,8 @@ function buildState(user) {
       canManageUsers: user.role === 'ADMIN',
       canManageSystem: user.role === 'ADMIN',
       canExportMaterials: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
-      canManagePrices: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role)
+      canManagePrices: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
+      canCorrectIncoming: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role)
     }
   };
 }
@@ -2468,12 +2522,7 @@ app.post('/api/materials/:id/certificate', requireAuth, allowRoles('LASER', 'BUE
   if (!material) return res.status(404).json({ error: 'Material wurde nicht gefunden.' });
   let upload;
   try { upload = readPdfUpload(req.body); } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
-  if (material.certificate && material.certificate.fileName) removePdfFile('CERTIFICATE', material.certificate.fileName);
-  const fileName = `${material.id}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}.pdf`;
-  fs.writeFileSync(pdfPathForKind('CERTIFICATE', fileName), upload.buffer);
-  const uploadedAt = nowIso();
-  material.certificate = { id: uid('wz'), fileName, originalName: upload.originalName, size: upload.buffer.length, uploadedBy: req.user.name, uploadedByRole: req.user.role, uploadedAt };
-  material.updatedAt = uploadedAt;
+  const certificate = assignMaterialCertificate(material, upload, req.user);
   const activity = addActivity('MATERIAL', `${req.user.name} hat ein Werkszeugnis als PDF zu ${materialTitleText(material)} hochgeladen.`, req.user, { materialId: material.id });
   saveDb();
   emitToAll('material:changed', { material, activity, message: `Werkszeugnis hochgeladen: ${material.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
@@ -2933,8 +2982,10 @@ app.post('/api/orders', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN
     materialName,
     materialFormat,
     materialThickness,
-    customerName: normalizeCustomerName(req.body.customerName),
-    customerKey: normalizeCustomerKey(req.body.customerName),
+    customerName: normalizeCustomerName(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
+    customerKey: normalizeCustomerKey(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
+    supplierName: normalizeCustomerName(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
+    supplierKey: normalizeCustomerKey(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
     storage,
     requestedAmount: storage === 'KONSI' ? amount : amount,
     requestedSheets: storage === 'KONSI' ? 0 : sheets,
@@ -2968,6 +3019,18 @@ app.post('/api/orders', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN
     doneAt: null,
     lastUpdate: nowIso()
   };
+  let certificateUpload = null;
+  try { certificateUpload = optionalCertificateUploadFromBody(req.body); } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
+  if (certificateUpload) {
+    if (material) {
+      const certificate = assignMaterialCertificate(material, certificateUpload, req.user);
+      order.materialCertificate = { ...certificate, materialId: material.id };
+    } else {
+      const certificate = writeCertificatePdf(order.id, certificateUpload, req.user);
+      order.pendingCertificate = certificate;
+      order.materialCertificate = certificate;
+    }
+  }
   if (material && order.kgPrice !== null) { material.kgPrice = order.kgPrice; material.kgPriceUpdatedAt = order.kgPriceUpdatedAt; material.kgPriceUpdatedBy = order.kgPriceUpdatedBy; material.updatedAt = order.kgPriceUpdatedAt; }
   db.orders.unshift(order);
   const activityExtra = { orderId: order.id };
@@ -2999,8 +3062,10 @@ app.post('/api/orders/manual', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN')
     materialName: material.name,
     materialFormat: material.format || '',
     materialThickness: material.thickness || '',
-    customerName: normalizeCustomerName(req.body.customerName),
-    customerKey: normalizeCustomerKey(req.body.customerName),
+    customerName: normalizeCustomerName(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
+    customerKey: normalizeCustomerKey(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
+    supplierName: normalizeCustomerName(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
+    supplierKey: normalizeCustomerKey(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
     storage: material.storage,
     requestedAmount: amount,
     requestedSheets: material.storage === 'KONSI' ? 0 : sheets,
@@ -3031,6 +3096,12 @@ app.post('/api/orders/manual', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN')
     totalPrice: 0,
     lastUpdate: createdAt
   };
+  let certificateUpload = null;
+  try { certificateUpload = optionalCertificateUploadFromBody(req.body); } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
+  if (certificateUpload) {
+    const certificate = assignMaterialCertificate(material, certificateUpload, req.user);
+    order.materialCertificate = { ...certificate, materialId: material.id };
+  }
   if (order.kgPrice !== null) { material.kgPrice = order.kgPrice; material.kgPriceUpdatedAt = order.kgPriceUpdatedAt; material.kgPriceUpdatedBy = order.kgPriceUpdatedBy; material.updatedAt = order.kgPriceUpdatedAt; }
   db.orders.unshift(order);
   const activity = addActivity('BESTELLUNG', `${req.user.name} hat ${orderQuantityText(order, 'ordered')} ${materialTitleText(material)} per Handeingabe als bestellt erfasst.`, req.user, { materialId: material.id, orderId: order.id });
@@ -3062,7 +3133,13 @@ app.patch('/api/orders/:id', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), 
     order.orderedAmount = normalizedAmount;
     order.orderedSheets = normalizedSheets;
     if (note) order.note = note;
-    if (req.body.customerName !== undefined) { order.customerName = normalizeCustomerName(req.body.customerName); order.customerKey = normalizeCustomerKey(order.customerName); }
+    if (req.body.customerName !== undefined || req.body.supplierName !== undefined) {
+      const supplierInput = req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName;
+      order.customerName = normalizeCustomerName(supplierInput);
+      order.customerKey = normalizeCustomerKey(order.customerName);
+      order.supplierName = order.customerName;
+      order.supplierKey = order.customerKey;
+    }
     if (req.body.kgPrice !== undefined && req.body.kgPrice !== '') {
       order.kgPrice = Math.max(0, numberOr(req.body.kgPrice, 0));
       order.kgPriceUpdatedAt = changedAt;
@@ -3070,6 +3147,12 @@ app.patch('/api/orders/:id', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), 
       const material = db.materials.find(m => m.id === order.materialId && !m.archived);
       if (material) { material.kgPrice = order.kgPrice; material.kgPriceUpdatedAt = changedAt; material.kgPriceUpdatedBy = req.user.name; material.updatedAt = changedAt; }
     }
+  } else if (action === 'SUPPLIER') {
+    const supplierInput = req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName;
+    order.customerName = normalizeCustomerName(supplierInput);
+    order.customerKey = normalizeCustomerKey(order.customerName);
+    order.supplierName = order.customerName;
+    order.supplierKey = order.customerKey;
   } else if (action === 'REJECT') {
     order.status = 'ABGELEHNT';
     order.approvedBy = req.user.name;
@@ -3407,6 +3490,9 @@ app.post('/api/orders/:id/receive', requireAuth, allowRoles('LASER', 'BUERO', 'C
     });
   }
   if (!material) return res.status(404).json({ error: 'Zugehöriges Material wurde nicht gefunden.' });
+  let certificateUpload = null;
+  try { certificateUpload = optionalCertificateUploadFromBody(req.body); } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
+  if (!certificateUpload && order.pendingCertificate && !material.certificate) applyPendingCertificateToMaterial(material, order.pendingCertificate);
 
   const beforeSourceSnapshot = virtualOrderMaterial ? { id: material.id, existed: false, material: null } : materialSnapshotById(material.id);
   let beforeTargetSnapshot = null;
@@ -3432,12 +3518,24 @@ app.post('/api/orders/:id/receive', requireAuth, allowRoles('LASER', 'BUERO', 'C
     material.packageStock = 0;
     material.sheetStock = 0;
     material.updatedAt = nowIso();
+    if (certificateUpload) {
+      const certificate = assignMaterialCertificate(material, certificateUpload, req.user);
+      order.materialCertificate = { ...certificate, materialId: material.id };
+    }
   } else {
     const existingTarget = db.materials.find(m => !m.archived && m.storage !== 'KONSI' && deliveryTargetKey(m, m.shelf) === deliveryTargetKey(material, targetShelf));
     beforeTargetSnapshot = existingTarget ? materialSnapshotById(existingTarget.id) : null;
     const changedTarget = findOrCreateDeliveryTarget(material, targetShelf, packages, sheets, { deliveredAt: nowIso(), deliveredBy: req.user.name, deliveredFromOrderId: order.id, packageWeightKg });
     changedTargetId = changedTarget.id;
     if (!beforeTargetSnapshot) beforeTargetSnapshot = { id: changedTarget.id, existed: false, material: null };
+    if (!certificateUpload && order.pendingCertificate && !changedTarget.certificate) {
+      applyPendingCertificateToMaterial(changedTarget, order.pendingCertificate);
+      order.materialCertificate = { ...changedTarget.certificate, materialId: changedTarget.id };
+    }
+    if (certificateUpload) {
+      const certificate = assignMaterialCertificate(changedTarget, certificateUpload, req.user);
+      order.materialCertificate = { ...certificate, materialId: changedTarget.id };
+    }
   }
 
   order.receivedAmount = Math.max(0, numberOr(order.receivedAmount, 0)) + packages;
@@ -3506,6 +3604,8 @@ app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO',
   }
 
   if (!normalizeThickness(sourceMaterial.thickness)) return res.status(400).json({ error: 'Bitte die Stärke eintragen, bevor der Wareneingang gebucht wird.' });
+  let certificateUpload = null;
+  try { certificateUpload = optionalCertificateUploadFromBody(req.body); } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
 
   const kgPrice = req.body.kgPrice !== undefined && req.body.kgPrice !== '' && ['BUERO', 'CHEF', 'ADMIN'].includes(req.user.role) ? Math.max(0, numberOr(req.body.kgPrice, 0)) : (sourceMaterial.kgPrice ?? null);
   const totalWeightKg = packageWeightKg ? packageWeightKg * packages : 0;
@@ -3522,6 +3622,8 @@ app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO',
   if (!beforeTargetSnapshot) beforeTargetSnapshot = { id: changedTarget.id, existed: false, material: null };
   if (note) changedTarget.note = [changedTarget.note, note].filter(Boolean).join(' | ');
   changedTarget.updatedAt = receivedAt;
+  let materialCertificate = null;
+  if (certificateUpload) materialCertificate = { ...assignMaterialCertificate(changedTarget, certificateUpload, req.user), materialId: changedTarget.id };
 
   const directIncoming = {
     id: uid('o'),
@@ -3558,6 +3660,7 @@ app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO',
     kgPriceUpdatedBy: kgPrice !== null ? req.user.name : (changedTarget.kgPriceUpdatedBy || ''),
     totalWeightKg,
     totalPrice,
+    materialCertificate,
     lastUpdate: receivedAt
   };
   if (kgPrice !== null) {
@@ -3578,11 +3681,47 @@ app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO',
 });
 
 
-app.put('/api/orders/:id/direct-receive', requireAuth, allowRoles('ADMIN'), (req, res) => {
+app.put('/api/orders/:id/direct-receive', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (req, res) => {
   const order = db.orders.find(o => o.id === req.params.id);
   if (!order) return res.status(404).json({ error: 'Wareneingang wurde nicht gefunden.' });
-  if (order.storage === 'KONSI') return res.status(400).json({ error: 'Konsi-Wareneingang wird über Paketnummern geführt und kann hier nicht geändert werden.' });
-  if (order.status !== 'ERLEDIGT') return res.status(400).json({ error: 'Nur bereits gebuchte Wareneingänge können geändert werden.' });
+  if (!['ERLEDIGT', 'TEILGELIEFERT'].includes(order.status)) return res.status(400).json({ error: 'Nur bereits gebuchte Wareneingänge können geändert werden.' });
+  const correctionAt = nowIso();
+  const isKonsiOrder = order.storage === 'KONSI';
+
+  if (isKonsiOrder) {
+    const material = db.materials.find(m => m.id === order.materialId && !m.archived);
+    if (!material) return res.status(404).json({ error: 'Zugehöriges Konsi-Material wurde nicht gefunden.' });
+    const beforeMaterial = materialSnapshotById(material.id);
+    const packages = Math.max(0, Math.floor(numberOr(req.body.receivedAmount, order.receivedAmount || 0)));
+    const packageNumbers = normalizePackageNumbers(req.body.packageNumbers);
+    if (packages <= 0) return res.status(400).json({ error: 'Bitte die gelieferte Paketmenge eintragen.' });
+    if (packageNumbers.length !== packages) return res.status(400).json({ error: 'Beim Konsi-Lager muss für jedes gelieferte Paket genau eine Paketnummer eingetragen werden.' });
+    const oldPackageNumbers = (Array.isArray(order.deliveries) ? order.deliveries : []).flatMap(d => normalizePackageNumbers(d.packageNumbers));
+    material.packageNumbers = removePackageNumbersOnce(material.packageNumbers, oldPackageNumbers).concat(packageNumbers);
+    material.stock = material.packageNumbers.length;
+    material.packageStock = 0;
+    material.sheetStock = 0;
+    material.updatedAt = correctionAt;
+
+    order.receivedAmount = packages;
+    order.receivedSheets = 0;
+    order.receivedBy = req.user.name;
+    order.receivedAt = correctionAt;
+    order.doneBy = req.user.name;
+    order.doneAt = correctionAt;
+    order.status = 'ERLEDIGT';
+    order.note = cleanText(req.body.note, order.note || '');
+    order.lastUpdate = correctionAt;
+    order.deliveries = Array.isArray(order.deliveries) ? order.deliveries : [];
+    order.deliveries.unshift({ id: uid('d'), packages, sheets: 0, targetShelf: KONSI_LOCATION, packageNumbers, note: order.note, by: req.user.name, at: correctionAt, correction: true });
+
+    const activity = addActivity('KORREKTUR', `${req.user.name} hat Konsi-Wareneingang korrigiert: ${order.materialName}, ${packages} Paket(e).`, req.user, { materialId: material.id, materialIds: [material.id], orderId: order.id, undo: makeUndo('WARENEINGANG_KORREKTUR', [beforeMaterial], 'Konsi-Wareneingang-Korrektur rückgängig') });
+    saveDb();
+    emitToAll('order:updated', { order, activity, message: `Konsi-Wareneingang korrigiert: ${order.materialName}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+    emitToAll('material:changed', { material, activity, message: `Konsi-Wareneingang korrigiert: ${order.materialName}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+    emitToAll('state:changed', { reason: 'order:incoming-corrected' });
+    return res.json({ order, material });
+  }
 
   const name = cleanText(req.body.name || order.materialName, 'Material');
   const thickness = normalizeThickness(req.body.thickness || order.materialThickness || '');
@@ -3591,6 +3730,7 @@ app.put('/api/orders/:id/direct-receive', requireAuth, allowRoles('ADMIN'), (req
   const targetShelf = normalizeShelf(req.body.targetShelf || order.deliveredToShelf || 'Carport');
   const packages = Math.max(0, Math.floor(numberOr(req.body.receivedAmount, order.receivedAmount || 0)));
   const packageWeightKg = Math.max(0, numberOr(req.body.packageWeightKg, order.lastPackageWeightKg || 0));
+  const kgPrice = req.body.kgPrice !== undefined && req.body.kgPrice !== '' ? Math.max(0, numberOr(req.body.kgPrice, 0)) : (order.kgPrice === undefined ? null : order.kgPrice);
   const sourceMaterial = normalizeMaterial({
     name,
     thickness,
@@ -3608,7 +3748,7 @@ app.put('/api/orders/:id/direct-receive', requireAuth, allowRoles('ADMIN'), (req
   const note = cleanText(req.body.note, '');
   if (packages <= 0 && sheets <= 0) return res.status(400).json({ error: 'Bitte gelieferte Pakete oder Tafeln eintragen.' });
 
-  const oldOrderShelf = normalizeShelf(order.deliveredToShelf || targetShelf || 'Carport');
+  const oldOrderShelf = normalizeShelf(order.deliveredToShelf || 'Carport');
   const oldSourceMaterial = normalizeMaterial({
     name: order.materialName,
     thickness: order.materialThickness,
@@ -3631,48 +3771,61 @@ app.put('/api/orders/:id/direct-receive', requireAuth, allowRoles('ADMIN'), (req
     oldMaterial.sheetStock = Math.max(0, numberOr(oldMaterial.sheetStock, numberOr(oldMaterial.stock, 0)) - oldSheets);
     oldMaterial.packageStock = Math.max(0, numberOr(oldMaterial.packageStock, 0));
     oldMaterial.stock = oldMaterial.packageStock + oldMaterial.sheetStock;
-    oldMaterial.updatedAt = nowIso();
+    oldMaterial.updatedAt = correctionAt;
   }
 
   const existingTarget = db.materials.find(m => !m.archived && m.storage !== 'KONSI' && deliveryTargetKey(m, m.shelf) === deliveryTargetKey(sourceMaterial, targetShelf));
   const targetSnapshot = existingTarget ? materialSnapshotById(existingTarget.id) : null;
-  const correctedAt = nowIso();
-  const changedTarget = findOrCreateDeliveryTarget(sourceMaterial, targetShelf, packages, sheets, { deliveredAt: correctedAt, deliveredBy: req.user.name, deliveredFromOrderId: order.id, packageWeightKg });
+  const changedTarget = findOrCreateDeliveryTarget(sourceMaterial, targetShelf, packages, sheets, { deliveredAt: correctionAt, deliveredBy: req.user.name, deliveredFromOrderId: order.id, packageWeightKg });
   changedTarget.name = name;
   changedTarget.thickness = thickness;
   changedTarget.format = format;
   changedTarget.shelf = targetShelf;
   changedTarget.storage = 'HAUPTLAGER';
-  changedTarget.deliveryPending = true;
-  changedTarget.deliveryStatus = 'GELIEFERT';
-  changedTarget.deliveredAt = correctedAt;
+  changedTarget.deliveryPending = isOverflowShelf(targetShelf);
+  changedTarget.deliveryStatus = isOverflowShelf(targetShelf) ? 'GELIEFERT' : '';
+  changedTarget.deliveredAt = correctionAt;
   changedTarget.deliveredBy = req.user.name;
   changedTarget.deliveredFromOrderId = order.id;
   changedTarget.lastPackageWeightKg = packageWeightKg || null;
+  if (kgPrice !== null) {
+    changedTarget.kgPrice = kgPrice;
+    changedTarget.kgPriceUpdatedAt = correctionAt;
+    changedTarget.kgPriceUpdatedBy = req.user.name;
+  }
   if (note) changedTarget.note = note;
-  changedTarget.updatedAt = correctedAt;
+  changedTarget.updatedAt = correctionAt;
 
-  order.materialId = changedTarget.id;
+  if (order.directIncoming) {
+    order.materialId = changedTarget.id;
+    order.requestedAmount = packages;
+    order.requestedSheets = sheets;
+    order.orderedAmount = packages;
+    order.orderedSheets = sheets;
+  }
   order.materialName = changedTarget.name;
   order.materialFormat = changedTarget.format;
   order.materialThickness = changedTarget.thickness;
-  order.requestedAmount = packages;
-  order.requestedSheets = sheets;
-  order.orderedAmount = packages;
-  order.orderedSheets = sheets;
   order.receivedAmount = packages;
   order.receivedSheets = sheets;
   order.deliveredToShelf = targetShelf;
   order.receivedBy = req.user.name;
-  order.receivedAt = correctedAt;
+  order.receivedAt = correctionAt;
   order.doneBy = req.user.name;
-  order.doneAt = correctedAt;
-  order.status = 'ERLEDIGT';
+  order.doneAt = correctionAt;
+  const orderedPackages = Math.max(0, numberOr(order.orderedAmount, 0));
+  const orderedSheets = Math.max(0, numberOr(order.orderedSheets, 0));
+  order.status = (!order.directIncoming && ((orderedPackages && packages < orderedPackages) || (orderedSheets && sheets < orderedSheets))) ? 'TEILGELIEFERT' : 'ERLEDIGT';
   order.note = note;
   order.lastPackageWeightKg = packageWeightKg || null;
-  order.lastUpdate = correctedAt;
+  order.kgPrice = kgPrice;
+  order.kgPriceUpdatedAt = kgPrice !== null ? correctionAt : (order.kgPriceUpdatedAt || null);
+  order.kgPriceUpdatedBy = kgPrice !== null ? req.user.name : (order.kgPriceUpdatedBy || '');
+  order.totalWeightKg = packageWeightKg ? packageWeightKg * packages : 0;
+  order.totalPrice = order.totalWeightKg && kgPrice !== null ? order.totalWeightKg * kgPrice : 0;
+  order.lastUpdate = correctionAt;
   order.deliveries = Array.isArray(order.deliveries) ? order.deliveries : [];
-  order.deliveries.unshift({ id: uid('d'), packages, sheets, targetShelf, packageNumbers: [], materialFormat: changedTarget.format, packageWeightKg, totalWeightKg: packageWeightKg ? packageWeightKg * packages : 0, autoSheets, note, by: req.user.name, at: correctedAt, directIncoming: Boolean(order.directIncoming), correction: true });
+  order.deliveries.unshift({ id: uid('d'), packages, sheets, targetShelf, packageNumbers: [], materialFormat: changedTarget.format, packageWeightKg, totalWeightKg: order.totalWeightKg, kgPrice, totalPrice: order.totalPrice, autoSheets, note, by: req.user.name, at: correctionAt, directIncoming: Boolean(order.directIncoming), correction: true });
 
   const snapshots = [oldSnapshot, targetSnapshot || { id: changedTarget.id, existed: false, material: null }].filter(Boolean);
   const dimensionText = changedTarget.format ? ` · Maße: ${changedTarget.format}` : '';
@@ -3681,7 +3834,7 @@ app.put('/api/orders/:id/direct-receive', requireAuth, allowRoles('ADMIN'), (req
   saveDb();
   emitToAll('order:updated', { order, activity, message: `Wareneingang korrigiert: ${changedTarget.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   emitToAll('material:changed', { material: changedTarget, activity, message: `Wareneingang korrigiert: ${changedTarget.name}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
-  emitToAll('state:changed', { reason: 'order:direct-receive-edited' });
+  emitToAll('state:changed', { reason: 'order:incoming-corrected' });
   res.json({ order, material: changedTarget });
 });
 

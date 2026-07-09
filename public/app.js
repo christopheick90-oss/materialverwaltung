@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '2.0';
+const CLIENT_VERSION = '2.2';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -23,6 +23,7 @@ const defaultShelves = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', '
 const defaultKonsiLocation = 'Garage';
 const inventoryRequiredAreas = [...defaultShelves, 'KONSI'];
 const materialFormats = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
+const SPECIAL_FORMAT_FILTER = '__SPECIAL_FORMATS__';
 const CUSTOM_FORMAT_VALUE = '__CUSTOM_FORMAT__';
 const DEFAULT_MATERIAL_MIN_STOCK = 2;
 
@@ -409,7 +410,7 @@ function materialSearchMatches(material, query) {
   return tokens.every(token => {
     const materialTextMatch = querySearchVariants(token).some(needle => hay.includes(needle));
     if (isLikelyThicknessSearchToken(token)) {
-      return materialThicknessMatchesToken(material, token) || materialTextMatch;
+      return materialThicknessMatchesToken(material, token);
     }
     return materialTextMatch;
   });
@@ -1149,6 +1150,7 @@ function materialFilterPanel() {
       <div class="filter-row"><span>Größe</span>
         ${filterButton(materialFilter.format === 'all', 'Alle', "setMaterialFormatFilter('all')", 'ghost', 'format', 'all')}
         ${materialFormats.map(format => filterButton(materialFilter.format === format, format, `setMaterialFormatFilter('${jsString(format)}')`, 'ghost', 'format', format)).join('')}
+        ${filterButton(materialFilter.format === SPECIAL_FORMAT_FILTER, 'Sonderformate', "setMaterialFormatFilter(SPECIAL_FORMAT_FILTER)", 'ghost', 'format', SPECIAL_FORMAT_FILTER)}
       </div>
       <div class="filter-row"><span>Sortierung</span>
         ${filterButton(materialFilter.sort === 'none', 'Standard', "setMaterialSort('none')", 'ghost', 'sort', 'none')}
@@ -1201,7 +1203,9 @@ function filteredMaterials() {
     .filter(m => {
       if (materialFilter.storage !== 'all' && (m.storage || 'HAUPTLAGER') !== materialFilter.storage) return false;
       if (materialFilter.shelf !== 'all' && String(m.shelf || '') !== materialFilter.shelf) return false;
-      if (materialFilter.format !== 'all' && normalizeFormatValue(m.format || '') !== materialFilter.format) return false;
+      if (materialFilter.format === SPECIAL_FORMAT_FILTER) {
+        if (materialFormats.includes(normalizeFormatValue(m.format || ''))) return false;
+      } else if (materialFilter.format !== 'all' && normalizeFormatValue(m.format || '') !== materialFilter.format) return false;
       if (materialFilter.status === 'all') return true;
       if (materialFilter.status === 'rest') return !!m.rest;
       if (materialFilter.status === 'low') return materialIsLow(m);
@@ -1914,11 +1918,13 @@ function orderDayLabel(dateKey) {
 
 function normalizeOrderCustomerName(value) {
   const text = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 100);
-  return text || 'Ohne Kunde';
+  if (!text || /^ohne\s+kunde$/i.test(text)) return 'Ohne Lieferant';
+  return text;
 }
 
 function normalizeOrderCustomerKey(value) {
   const name = normalizeOrderCustomerName(value);
+  if (name === 'Ohne Lieferant') return 'ohne_kunde';
   const normalized = name.normalize ? name.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : name;
   return normalized
     .toLowerCase()
@@ -1929,11 +1935,11 @@ function normalizeOrderCustomerKey(value) {
 }
 
 function orderCustomerName(order) {
-  return normalizeOrderCustomerName(order && (order.customerName || order.customer || order.kunde));
+  return normalizeOrderCustomerName(order && (order.supplierName || order.lieferant || order.customerName || order.customer || order.kunde));
 }
 
 function orderCustomerKey(order) {
-  return normalizeOrderCustomerKey(order && (order.customerKey || order.customerName || order.customer || order.kunde));
+  return normalizeOrderCustomerKey(order && (order.supplierKey || order.supplierName || order.lieferant || order.customerKey || order.customerName || order.customer || order.kunde));
 }
 
 
@@ -2062,15 +2068,15 @@ function renderCustomerPdfList(dateKey, customerKey, title, emptyText, list, bad
 
 function renderOrderCustomerDocuments(dateKey, customerKey) {
   return `
-    ${renderCustomerPdfList(dateKey, customerKey, 'Auftragsbestätigungen für diesen Kunden', '', orderCustomerConfirmations(dateKey, customerKey), 'AB PDF', 'openOrderCustomerConfirmation')}
-    ${renderCustomerPdfList(dateKey, customerKey, 'Lieferscheine für diesen Kunden', '', orderCustomerDeliveryNotes(dateKey, customerKey), 'LS PDF', 'openOrderCustomerDeliveryNote')}
+    ${renderCustomerPdfList(dateKey, customerKey, 'Auftragsbestätigungen für diesen Lieferanten', '', orderCustomerConfirmations(dateKey, customerKey), 'AB PDF', 'openOrderCustomerConfirmation')}
+    ${renderCustomerPdfList(dateKey, customerKey, 'Lieferscheine für diesen Lieferanten', '', orderCustomerDeliveryNotes(dateKey, customerKey), 'LS PDF', 'openOrderCustomerDeliveryNote')}
   `;
 }
 
 function renderOrderCustomerKonsiDocuments(dateKey, customerKey) {
   return `
-    ${renderCustomerPdfList(dateKey, customerKey, 'Konsi-Auftragsbestätigungen für diesen Kunden', '', orderCustomerKonsiConfirmations(dateKey, customerKey), 'Konsi AB', 'openOrderCustomerKonsiConfirmation')}
-    ${renderCustomerPdfList(dateKey, customerKey, 'Konsi-Lieferscheine für diesen Kunden', '', orderCustomerKonsiDeliveryNotes(dateKey, customerKey), 'Konsi LS', 'openOrderCustomerKonsiDeliveryNote')}
+    ${renderCustomerPdfList(dateKey, customerKey, 'Konsi-Auftragsbestätigungen für diesen Lieferanten', '', orderCustomerKonsiConfirmations(dateKey, customerKey), 'Konsi AB', 'openOrderCustomerKonsiConfirmation')}
+    ${renderCustomerPdfList(dateKey, customerKey, 'Konsi-Lieferscheine für diesen Lieferanten', '', orderCustomerKonsiDeliveryNotes(dateKey, customerKey), 'Konsi LS', 'openOrderCustomerKonsiDeliveryNote')}
   `;
 }
 
@@ -2114,7 +2120,7 @@ function renderOrdersGrouped(orders, withActions) {
     const titleParts = [];
     if (orderCount) titleParts.push(`${orderCount} Bestellung(en)`);
     if (incomingCount) titleParts.push(`${incomingCount} Wareneingang`);
-    titleParts.push(`${customers.length} Kunde(n)`);
+    titleParts.push(`${customers.length} Lieferant(en)`);
     return `<div class="order-day-group">
       <div class="order-day-head">
         <div><h3>Bestellungen vom ${orderDayLabel(group.dateKey)}</h3><div class="small muted">${titleParts.join(' · ')} zusammengefasst</div></div>
@@ -2128,7 +2134,7 @@ function renderOrdersGrouped(orders, withActions) {
         const subtitle = [customerOrderCount ? `${customerOrderCount} Bestellung(en)` : '', customerIncomingCount ? `${customerIncomingCount} Wareneingang` : '', customerKonsiCount ? `${customerKonsiCount} Konsi` : ''].filter(Boolean).join(' · ') || `${customer.orders.length} Vorgang/Vorgänge`;
         return `<div class="order-customer-group">
           <div class="order-customer-head">
-            <div><h4>Kunde: ${escapeHtml(customer.customerName)}</h4><div class="small muted">${escapeHtml(subtitle)}</div></div>
+            <div><h4>Lieferant: ${escapeHtml(customer.customerName)}</h4><div class="small muted">${escapeHtml(subtitle)}</div></div>
             <div class="row-actions">
               ${customerOrderCount ? `<button class="ghost mini" onclick="uploadOrderCustomerConfirmation('${jsString(group.dateKey)}','${jsString(customer.customerKey)}')">AB PDF hochladen</button>` : ''}
               ${(customerOrderCount || customerIncomingCount) ? `<button class="ghost mini" onclick="uploadOrderCustomerDeliveryNote('${jsString(group.dateKey)}','${jsString(customer.customerKey)}')">Lieferschein PDF hochladen</button>` : ''}
@@ -2182,7 +2188,7 @@ function renderOrders() {
     </div>
     ${orderFilterPanel(incoming, filtered)}
     <div class="card">
-      <h2>Bestellungen nach Tag und Kunde</h2>
+      <h2>Bestellungen nach Tag und Lieferant</h2>
       <div id="ordersResult">${filtered.length ? renderOrdersGrouped(filtered, true) : '<div class="empty">Keine Bestellung oder Lieferung gefunden.</div>'}</div>
     </div>
   `;
@@ -2200,7 +2206,7 @@ function renderOrdersTable(orders, withActions) {
         ${orders.map(o => `
           <tr>
             <td>${o.directIncoming ? '<span class="badge green">Wareneingang</span>' : `${statusBadge(o.status)}${o.storage === 'KONSI' ? '<br><span class="badge red">Konsi</span>' : ''}${(o.manualOrder || o.manualRequest) ? '<br><span class="badge gray">Handeingabe</span>' : ''}`}</td>
-            <td><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}<div class="small muted">Kunde: ${escapeHtml(orderCustomerName(o))}</div><div class="small muted">${o.directIncoming ? 'Erfasst von' : (o.manualOrder ? 'Bestellung erfasst von' : (o.manualRequest ? 'Per Handeingabe angefragt von' : 'Angefragt von'))} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}${o.manualOrder ? '<div class="small muted">Bestellung per Handeingabe</div>' : ''}${o.manualRequest ? '<div class="small muted">Freie Materialanfrage</div>' : ''}${orderConfirmationLabel(o)}${orderPriceLine(o)}</td>
+            <td><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}<div class="small muted">Lieferant: ${escapeHtml(orderCustomerName(o))}</div><div class="small muted">${o.directIncoming ? 'Erfasst von' : (o.manualOrder ? 'Bestellung erfasst von' : (o.manualRequest ? 'Per Handeingabe angefragt von' : 'Angefragt von'))} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}${o.manualOrder ? '<div class="small muted">Bestellung per Handeingabe</div>' : ''}${o.manualRequest ? '<div class="small muted">Freie Materialanfrage</div>' : ''}${orderConfirmationLabel(o)}${orderPriceLine(o)}</td>
             <td>${o.directIncoming ? `Wareneingang: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : `Anfrage: <strong>${orderQuantityLabel(o, 'request')}</strong>${o.orderedAmount ? `<br>Bestellt: <strong>${orderQuantityLabel(o, 'ordered')}</strong>` : ''}${(Number(o.receivedAmount)||Number(o.receivedSheets)) ? `<br>Geliefert: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : ''}`}</td>
             <td class="order-note">${escapeHtml(o.note || '-')}</td>
             <td>${orderFlow(o.status)}<div class="small muted">Letzte Änderung: ${fmtDate(o.lastUpdate)}</div>${o.status === 'ERLEDIGT' ? `<div class="small muted">Geliefert: ${fmtDate(o.receivedAt || o.lastUpdate)}</div>` : ''}</td>
@@ -2213,7 +2219,8 @@ function renderOrdersTable(orders, withActions) {
 
 function renderOrderActions(order) {
   const actions = [];
-  if (currentUser && currentUser.role === 'ADMIN' && order.status === 'ERLEDIGT' && order.storage !== 'KONSI') {
+  const hasBookedIncoming = ['ERLEDIGT','TEILGELIEFERT'].includes(order.status) && (order.directIncoming || Number(order.receivedAmount || 0) > 0 || Number(order.receivedSheets || 0) > 0 || (Array.isArray(order.deliveries) && order.deliveries.length));
+  if (state.permissions.canCorrectIncoming && hasBookedIncoming) {
     actions.push(`<button class="primary mini" onclick="openEditDirectIncomingModal('${jsString(order.id)}')">Wareneingang ändern</button>`);
   }
   if (state.permissions.canMarkOrdered && order.status === 'ANGEFORDERT') {
@@ -2221,6 +2228,7 @@ function renderOrderActions(order) {
     actions.push(`<button class="secondary danger mini" onclick="updateOrder('${jsString(order.id)}','REJECT')">Ablehnen</button>`);
   }
   if (state.permissions.canMarkOrdered && order.status === 'FREIGEGEBEN') actions.push(`<button class="primary mini" onclick="openOrderedModal('${jsString(order.id)}')">Bestellt</button>`);
+  if (state.permissions.canMarkOrdered) actions.push(`<button class="ghost mini" onclick="openOrderSupplierModal('${jsString(order.id)}')">Lieferant ändern</button>`);
   if (state.permissions.canReceiveDelivery && (order.status === 'BESTELLT' || order.status === 'TEILGELIEFERT')) actions.push(`<button class="primary mini" onclick="openReceiveModal('${jsString(order.id)}')">Lieferung annehmen</button>`);
   return `<div class="row-actions">${actions.join('') || '<span class="small muted">Keine Aktion</span>'}</div>`;
 }
@@ -2276,10 +2284,10 @@ function uploadOrderCustomerPdf(dateKey, customerKey, endpoint, successTitle, su
   input.click();
 }
 
-window.uploadOrderCustomerConfirmation = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'confirmation', 'Auftragsbestätigung gespeichert', `Die PDF wurde für den Kunden am ${orderDayLabel(dateKey)} abgelegt.`);
-window.uploadOrderCustomerDeliveryNote = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'delivery-note', 'Lieferschein gespeichert', `Der Lieferschein wurde für den Kunden am ${orderDayLabel(dateKey)} abgelegt.`);
-window.uploadOrderCustomerKonsiConfirmation = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'konsi-confirmation', 'Konsi-Auftragsbestätigung gespeichert', `Die Konsi-AB wurde für den Kunden am ${orderDayLabel(dateKey)} abgelegt.`);
-window.uploadOrderCustomerKonsiDeliveryNote = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'konsi-delivery-note', 'Konsi-Lieferschein gespeichert', `Der Konsi-Lieferschein wurde für den Kunden am ${orderDayLabel(dateKey)} abgelegt.`);
+window.uploadOrderCustomerConfirmation = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'confirmation', 'Auftragsbestätigung gespeichert', `Die PDF wurde für den Lieferanten am ${orderDayLabel(dateKey)} abgelegt.`);
+window.uploadOrderCustomerDeliveryNote = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'delivery-note', 'Lieferschein gespeichert', `Der Lieferschein wurde für den Lieferanten am ${orderDayLabel(dateKey)} abgelegt.`);
+window.uploadOrderCustomerKonsiConfirmation = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'konsi-confirmation', 'Konsi-Auftragsbestätigung gespeichert', `Die Konsi-AB wurde für den Lieferanten am ${orderDayLabel(dateKey)} abgelegt.`);
+window.uploadOrderCustomerKonsiDeliveryNote = (dateKey, customerKey) => uploadOrderCustomerPdf(dateKey, customerKey, 'konsi-delivery-note', 'Konsi-Lieferschein gespeichert', `Der Konsi-Lieferschein wurde für den Lieferanten am ${orderDayLabel(dateKey)} abgelegt.`);
 window.uploadOrderCustomerKonsiDocument = window.uploadOrderCustomerKonsiConfirmation;
 
 function uploadPdfFileToOrderCustomer(dateKey, customerKey, endpoint, file) {
@@ -2297,6 +2305,26 @@ function uploadPdfFileToOrderCustomer(dateKey, customerKey, endpoint, file) {
     reader.onerror = () => reject(new Error('PDF konnte nicht gelesen werden.'));
     reader.readAsDataURL(file);
   });
+}
+
+function readPdfFileAsDataUrl(file) {
+  if (!file) return Promise.resolve('');
+  if (file.type && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return Promise.reject(new Error('Bitte eine PDF-Datei auswählen.'));
+  if (file.size > 15 * 1024 * 1024) return Promise.reject(new Error('PDF ist zu groß. Maximal 15 MB.'));
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('PDF konnte nicht gelesen werden.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function certificatePayloadFromInput(inputId) {
+  const input = $('#'+inputId);
+  const file = input && input.files ? input.files[0] : null;
+  if (!file) return {};
+  const data = await readPdfFileAsDataUrl(file);
+  return { certificateFileName: file.name, certificateData: data };
 }
 
 // Alte Tagesfunktionen bleiben als Weiterleitung für bestehende Buttons/Tests erhalten.
@@ -3672,7 +3700,7 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
       <div class="form-full capture-section" id="orderRequestSection">
         <div class="notice"><strong id="orderRequestTitle">Bestellanforderung</strong><br><span id="orderRequestNotice">Jede Rolle kann hier eine Anfrage erfassen. Das Material kann aus der Liste gewählt oder frei eingetippt werden.</span></div>
       </div>
-      <div class="form-full capture-section" id="orderCustomerSection"><label>Kunde</label><input id="orderCustomer" placeholder="z. B. Kunde oder Auftrag / leer = Ohne Kunde"><div class="format-hint">Danach werden Bestellungen und PDFs pro Kunde gruppiert.</div></div>
+      <div class="form-full capture-section" id="orderCustomerSection"><label>Lieferant</label><input id="orderCustomer" placeholder="z. B. Lieferant / leer = Ohne Lieferant"><div class="format-hint">Danach werden Bestellungen und PDFs pro Lieferant gruppiert.</div></div>
       <div class="capture-section" id="orderInputModeSection"><label>Materialangabe</label><select id="orderInputMode"><option value="EXISTING">Material aus Liste</option><option value="MANUAL">Material frei eingeben</option></select></div>
       <div class="form-full capture-section" id="orderMaterialSection"><label id="orderMaterialLabel">Material aus Liste</label><select id="orderMaterial" data-normal-options="${escapeHtml(orderOptions)}" data-konsi-options="${escapeHtml(konsiOrderOptions)}">${orderOptions}</select></div>
       <div class="capture-section hidden" id="orderManualNameSection"><label>Material</label><input id="orderManualName" placeholder="z. B. 1.4571 oder AlMg3"></div>
@@ -3680,6 +3708,7 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
       <div class="capture-section" id="orderAmountSection"><label id="orderAmountLabel">Menge</label><input id="orderAmount" type="number" min="1" step="1" value="1"></div>
       <div class="capture-section" id="orderUnitSection"><label>Einheit</label><select id="orderUnit"><option value="PAKET">Paket(e)</option><option value="TAFEL">Tafel(n)</option></select></div>
       ${canSeePrices() ? `<div class="capture-section" id="orderKgPriceSection"><label>KG-Preis €/kg</label><input id="orderKgPrice" type="number" min="0" step="0.01" placeholder="z. B. 2,35"><div class="format-hint">Nur Büro/Chef.</div></div>` : ''}
+      <div class="form-full capture-section" id="orderCertificateSection"><label>Werkszeugnis PDF optional</label><input id="orderCertificate" type="file" accept="application/pdf,.pdf"><div class="format-hint">Wird direkt beim Material abgelegt. Bei freier Materialanfrage wird es beim späteren Wareneingang mit übernommen.</div></div>
       <div class="form-full capture-section" id="orderNoteSection"><label id="orderNoteLabel">Hinweis</label><textarea id="orderNote" placeholder="z. B. Lieferant, dringend, Rückfrage ..."></textarea></div>
 
       <div class="form-full capture-section hidden" id="directIncomingSection">
@@ -3695,14 +3724,15 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
       ${canSeePrices() ? `<div class="capture-section hidden" id="directIncomingKgPriceSection"><label>KG-Preis €/kg</label><input id="directIncomingKgPrice" type="number" min="0" step="0.01" placeholder="z. B. 2,35"><div class="format-hint">Nur Büro/Chef.</div></div>` : ''}
       <div class="form-full weight-calc-box capture-section hidden" id="directIncomingCalcSection"><div><strong>Berechnung</strong><br><span id="directIncomingWeightHint">Bei neuem Material Stärke und Format eintragen, dann wird die Berechnung genauer.</span></div><div class="format-hint" id="directIncomingCalcHint">Pakete und Gewicht pro Paket eintragen, dann wird eine Tafeln-Menge vorgeschlagen.</div></div>
       <div class="capture-section hidden" id="directIncomingSheetsSection"><label>Berechnete / gelieferte Tafeln</label><input id="directIncomingSheets" type="number" min="0" step="1" value="0"></div>
+      <div class="form-full capture-section hidden" id="directIncomingCertificateSection"><label>Werkszeugnis PDF optional</label><input id="directIncomingCertificate" type="file" accept="application/pdf,.pdf"><div class="format-hint">Wird direkt beim gelieferten Material abgelegt und später auf der Materialkarte abrufbar.</div></div>
       <div class="form-full capture-section hidden" id="directIncomingNoteSection"><label>Bemerkung</label><textarea id="directIncomingNote" placeholder="z. B. Lieferschein, Lieferant, ohne Bestellung gekommen ..."></textarea></div>
 
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" id="orderSubmitButton" type="submit">Speichern</button></div>
     </form>
   `);
 
-  const orderSectionIds = ['orderRequestSection','orderCustomerSection','orderInputModeSection','orderMaterialSection','orderManualNameSection','orderManualThicknessSection','orderAmountSection','orderUnitSection','orderKgPriceSection','orderNoteSection'];
-  const incomingSectionIds = ['directIncomingSection','directIncomingMaterialSection','directIncomingNameSection','directIncomingThicknessSection','directIncomingFormatSection','directIncomingShelfSection','directIncomingPackagesSection','directIncomingWeightSection','directIncomingKgPriceSection','directIncomingCalcSection','directIncomingSheetsSection','directIncomingNoteSection'];
+  const orderSectionIds = ['orderRequestSection','orderCustomerSection','orderInputModeSection','orderMaterialSection','orderManualNameSection','orderManualThicknessSection','orderAmountSection','orderUnitSection','orderKgPriceSection','orderCertificateSection','orderNoteSection'];
+  const incomingSectionIds = ['directIncomingSection','directIncomingMaterialSection','directIncomingNameSection','directIncomingThicknessSection','directIncomingFormatSection','directIncomingShelfSection','directIncomingPackagesSection','directIncomingWeightSection','directIncomingKgPriceSection','directIncomingCalcSection','directIncomingSheetsSection','directIncomingCertificateSection','directIncomingNoteSection'];
   const showIds = (ids, show) => ids.forEach(id => { const el = $('#'+id); if (el) el.classList.toggle('hidden', !show); });
 
   const selectedOrderMaterial = () => (state.materials || []).find(m => m.id === $('#orderMaterial').value) || null;
@@ -3818,7 +3848,8 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
           packageWeightKg: Number($('#directIncomingWeight').value || 0),
           kgPrice: canSeePrices() && $('#directIncomingKgPrice') ? $('#directIncomingKgPrice').value : '',
           targetShelf: $('#directIncomingShelf').value,
-          note: $('#directIncomingNote').value
+          note: $('#directIncomingNote').value,
+          ...(await certificatePayloadFromInput('directIncomingCertificate'))
         };
         await api('/api/orders/direct-receive', { method: 'POST', body: JSON.stringify(payload) });
         showToast('Wareneingang gebucht', `Material wurde als Wareneingang nach ${payload.targetShelf || 'Carport'} gebucht.`);
@@ -3842,7 +3873,8 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
           storage: konsiMode ? 'KONSI' : '',
           konsiOrder: konsiMode,
           kgPrice: canSeePrices() && $('#orderKgPrice') ? $('#orderKgPrice').value : '',
-          note: $('#orderNote').value
+          note: $('#orderNote').value,
+          ...(await certificatePayloadFromInput('orderCertificate'))
         };
         await api('/api/orders', { method: 'POST', body: JSON.stringify(payload) });
         showToast('Bestellung gesendet', konsiMode ? 'Die Konsi-Anfrage wurde separat gespeichert.' : (manual ? 'Die freie Materialanfrage wurde an Büro/Chef übertragen.' : 'Die Meldung wurde an Büro/Chef übertragen.'));
@@ -3857,6 +3889,25 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
 };
 
 
+
+window.openOrderSupplierModal = (orderId) => {
+  const o = state.orders.find(x => x.id === orderId);
+  if (!o) return showToast('Bestellung fehlt', 'Der Vorgang wurde nicht gefunden.');
+  openModal(`
+    <h2>Lieferant ändern</h2>
+    <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Aktuell: ${escapeHtml(orderCustomerName(o))}</span></p>
+    <form id="supplierChangeForm" class="form-grid">
+      <div class="form-full"><label>Lieferant</label><input id="supplierChangeName" value="${escapeHtml(orderCustomerName(o))}" placeholder="z. B. Lieferant / leer = Ohne Lieferant"><div class="format-hint">Die Bestellung wird danach automatisch in die passende Lieferantengruppe verschoben.</div></div>
+      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Speichern</button></div>
+    </form>
+  `);
+  $('#supplierChangeForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await updateOrder(orderId, 'SUPPLIER', null, o.note || '', o.orderedSheets || 0, '', $('#supplierChangeName').value);
+    closeModal();
+  });
+};
+
 window.openOrderedModal = (orderId) => {
   const o = state.orders.find(x => x.id === orderId);
   const material = (state.materials || []).find(m => m.id === (o && o.materialId));
@@ -3864,7 +3915,7 @@ window.openOrderedModal = (orderId) => {
     <h2>Als bestellt markieren</h2>
     <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Anfrage: ${orderQuantityLabel(o, 'request')}</span></p>
     <form id="orderedForm" class="form-grid">
-      <div class="form-full"><label>Kunde</label><input id="orderedCustomer" value="${escapeHtml(orderCustomerName(o))}" placeholder="z. B. Kunde oder Auftrag"><div class="format-hint">Änderung sortiert die Bestellung in die passende Kundengruppe.</div></div>
+      <div class="form-full"><label>Lieferant</label><input id="orderedCustomer" value="${escapeHtml(orderCustomerName(o))}" placeholder="z. B. Lieferant"><div class="format-hint">Änderung sortiert die Bestellung in die passende Lieferantengruppe.</div></div>
       <div><label>Bestellte Pakete</label><input id="orderedAmount" type="number" min="${o.storage === 'KONSI' ? '1' : '0'}" step="1" value="${Number(o.requestedAmount || 0)}"></div>${o.storage !== 'KONSI' ? `<div><label>Bestellte Tafeln</label><input id="orderedSheets" type="number" min="0" step="1" value="${Number(o.requestedSheets || 0)}"></div>` : ''}
       ${canSeePrices() && o.storage !== 'KONSI' ? `<div><label>KG-Preis €/kg</label><input id="orderedKgPrice" type="number" min="0" step="0.01" value="${o.kgPrice ?? material?.kgPrice ?? ''}" placeholder="z. B. 2,35"><div class="format-hint">Nur sichtbar für Büro/Chef.</div></div>` : ''}
       <div class="form-full"><label>Hinweis vom Büro</label><textarea id="orderedNote" placeholder="z. B. Liefertermin, Lieferant oder Rückfrage ...">${escapeHtml(o.note || '')}</textarea></div>
@@ -3900,7 +3951,8 @@ window.openReceiveModal = (orderId) => {
       <div class="form-full weight-calc-box"><div><strong>Berechnung</strong><br><span id="sheetWeightHint">${escapeHtml(weightInfoText(material))}</span></div><div class="format-hint" id="weightCalcHint">Pakete und Gewicht pro Paket eintragen, dann werden die Tafeln automatisch vorgeschlagen.</div></div>
       <div><label>Berechnete Tafeln</label><input id="receivedSheets" type="number" min="0" step="1" value="${Math.max(0, orderedS - Number(o.receivedSheets || 0))}"><div class="format-hint">Wird aus Pakete × Gewicht berechnet, kann aber überschrieben werden.</div></div>`}
       ${isK ? `<div class="form-full"><label>Konsi-Paketnummern</label><textarea id="receivedPackageNumbers" placeholder="eine Paketnummer pro Zeile"></textarea><div class="format-hint">Beim Konsi muss für jedes gelieferte Paket eine Nummer eingetragen werden.</div></div>` : `<div class="form-full"><label>Ablageort</label><select id="deliveryShelf">${shelfOptions('Carport')}</select><div class="format-hint">Standard ist Carport, weil Lieferungen meistens dort gelagert werden. Ausnahmen können direkt auf Bodenhaltung oder Regal 1–6 gebucht werden.</div></div>`}
-      <div class="form-full"><label>${isK ? 'Konsi Lieferschein PDF optional' : 'Lieferschein PDF optional'}</label><input id="receiveDeliveryNote" type="file" accept="application/pdf,.pdf"><div class="format-hint">Wird beim Datum und Kunden der Bestellung abgelegt und bleibt abrufbar.</div></div>
+      <div class="form-full"><label>${isK ? 'Konsi Lieferschein PDF optional' : 'Lieferschein PDF optional'}</label><input id="receiveDeliveryNote" type="file" accept="application/pdf,.pdf"><div class="format-hint">Wird beim Datum und Lieferanten der Bestellung abgelegt und bleibt abrufbar.</div></div>
+      <div class="form-full"><label>Werkszeugnis PDF optional</label><input id="receiveCertificate" type="file" accept="application/pdf,.pdf"><div class="format-hint">Wird direkt beim gelieferten Material abgelegt und später auf der Materialkarte abrufbar.</div></div>
       <div class="form-full"><label>Bemerkung</label><textarea id="receiveNote" placeholder="z. B. Lieferschein, Schaden, Besonderheit ...">${escapeHtml(o.note || '')}</textarea></div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Lieferung annehmen</button></div>
     </form>
@@ -3934,7 +3986,8 @@ window.openReceiveModal = (orderId) => {
       kgPrice: (!isK && canSeePrices() && $('#receiveKgPrice')) ? $('#receiveKgPrice').value : '',
       targetShelf: isK ? '' : $('#deliveryShelf').value,
       packageNumbers: isK ? $('#receivedPackageNumbers').value : '',
-      note: $('#receiveNote').value
+      note: $('#receiveNote').value,
+      ...(await certificatePayloadFromInput('receiveCertificate'))
     };
     try {
       await api(`/api/orders/${orderId}/receive`, { method: 'POST', body: JSON.stringify(payload) });
@@ -4046,20 +4099,55 @@ window.openDirectIncomingModal = () => {
 };
 
 window.openEditDirectIncomingModal = (orderId) => {
-  if (!currentUser || currentUser.role !== 'ADMIN') return showToast('Keine Berechtigung', 'Nur der Systemzugang darf Wareneingänge ändern.');
+  if (!state.permissions.canCorrectIncoming) return showToast('Keine Berechtigung', 'Wareneingänge dürfen nur Büro, Chef oder Admin nachträglich ändern.');
   const order = (state.orders || []).find(o => o.id === orderId);
-  if (!order || !order.directIncoming) return showToast('Nicht gefunden', 'Dieser Wareneingang kann nicht geändert werden.');
+  if (!order || !['ERLEDIGT','TEILGELIEFERT'].includes(order.status)) return showToast('Nicht gefunden', 'Dieser Wareneingang kann nicht geändert werden.');
+  const isK = order.storage === 'KONSI';
   const material = (state.materials || []).find(m => m.id === order.materialId) || {};
+  const packages = Number(order.receivedAmount || 0);
+  const sheets = Number(order.receivedSheets || 0);
+  const deliveries = Array.isArray(order.deliveries) ? order.deliveries : [];
+  const lastDelivery = deliveries[0] || {};
+  const packageNumbers = deliveries.flatMap(d => Array.isArray(d.packageNumbers) ? d.packageNumbers : []).join('\n');
+  if (isK) {
+    openModal(`
+      <h2>Konsi-Wareneingang ändern</h2>
+      <p class="muted">Hier kannst du eine falsch gebuchte Konsi-Lieferung korrigieren. Die Änderung bleibt in der Historie nachvollziehbar.</p>
+      <form id="editDirectIncomingForm" class="form-grid">
+        <div><label>Gelieferte Pakete</label><input id="editIncomingPackages" type="number" min="0" step="1" value="${packages}"></div>
+        <div class="form-full"><label>Konsi-Paketnummern</label><textarea id="editIncomingPackageNumbers" placeholder="eine Paketnummer pro Zeile">${escapeHtml(packageNumbers)}</textarea><div class="format-hint">Anzahl Paketnummern muss zur Paketmenge passen.</div></div>
+        <div class="form-full"><label>Bemerkung</label><textarea id="editIncomingNote" placeholder="Warum wurde korrigiert?">${escapeHtml(order.note || '')}</textarea></div>
+        <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Änderung speichern</button></div>
+      </form>
+    `);
+    $('#editDirectIncomingForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const payload = {
+        receivedAmount: Number($('#editIncomingPackages').value || 0),
+        packageNumbers: $('#editIncomingPackageNumbers').value,
+        note: $('#editIncomingNote').value
+      };
+      try {
+        await api(`/api/orders/${orderId}/direct-receive`, { method: 'PUT', body: JSON.stringify(payload) });
+        closeModal();
+        showToast('Wareneingang geändert', 'Die Konsi-Korrektur wurde gespeichert.');
+        await loadState(true);
+        currentPage = 'orders';
+        renderCurrentPage();
+      } catch (error) { showToast('Fehler', error.message); }
+    });
+    return;
+  }
+
   const name = order.materialName || material.name || '';
   const thickness = order.materialThickness || material.thickness || '';
   const format = normalizeFormatValue(order.materialFormat || material.format || '3000x1500');
   const shelf = order.deliveredToShelf || material.shelf || 'Carport';
-  const packages = Number(order.receivedAmount || 0);
-  const sheets = Number(order.receivedSheets || 0);
-  const weight = Number(order.lastPackageWeightKg || (Array.isArray(order.deliveries) && order.deliveries[0] ? order.deliveries[0].packageWeightKg : 0) || 0);
+  const weight = Number(order.lastPackageWeightKg || lastDelivery.packageWeightKg || 0);
+  const kgPrice = order.kgPrice ?? material.kgPrice ?? '';
   openModal(`
     <h2>Wareneingang ändern</h2>
-    <p class="muted">Über den Systemzugang kannst du einen falsch erfassten Wareneingang korrigieren. Die Änderung wird in Material und Historie protokolliert.</p>
+    <p class="muted">Korrigiert einen falsch erfassten Wareneingang. Der Bestand wird automatisch zurückgerechnet und neu gebucht. Die Korrektur bleibt in der Historie sichtbar.</p>
     <form id="editDirectIncomingForm" class="form-grid">
       <div><label>Material</label><input id="editIncomingName" value="${escapeHtml(name)}" placeholder="z. B. S235"></div>
       <div><label>Stärke</label><input id="editIncomingThickness" required value="${escapeHtml(thickness)}" placeholder="z. B. 3 oder 3 mm"><div class="format-hint">Pflichtfeld</div></div>
@@ -4067,6 +4155,7 @@ window.openEditDirectIncomingModal = (orderId) => {
       <div><label>Ablageort</label><select id="editIncomingShelf">${shelfOptions(shelf)}</select></div>
       <div><label>Gelieferte Pakete</label><input id="editIncomingPackages" type="number" min="0" step="1" value="${packages}"></div>
       <div><label>Gewicht pro Paket kg</label><input id="editIncomingWeight" type="number" min="0" step="0.1" value="${weight || ''}" placeholder="z. B. 850"></div>
+      ${canSeePrices() ? `<div><label>KG-Preis €/kg</label><input id="editIncomingKgPrice" type="number" min="0" step="0.01" value="${kgPrice === null ? '' : escapeHtml(kgPrice)}" placeholder="z. B. 2,35"><div class="format-hint">Nur Büro/Chef.</div></div>` : ''}
       <div class="form-full weight-calc-box"><div><strong>Berechnung</strong><br><span id="editIncomingWeightHint">Stärke und Format prüfen, dann wird die Berechnung genauer.</span></div><div class="format-hint" id="editIncomingCalcHint">Optional: Pakete und Gewicht pro Paket eintragen.</div></div>
       <div><label>Gelieferte Tafeln</label><input id="editIncomingSheets" type="number" min="0" step="1" value="${sheets}"></div>
       <div class="form-full"><label>Bemerkung</label><textarea id="editIncomingNote" placeholder="Warum wurde korrigiert?">${escapeHtml(order.note || '')}</textarea></div>
@@ -4112,6 +4201,7 @@ window.openEditDirectIncomingModal = (orderId) => {
       receivedAmount: Number($('#editIncomingPackages').value || 0),
       receivedSheets: Number($('#editIncomingSheets').value || 0),
       packageWeightKg: Number($('#editIncomingWeight').value || 0),
+      kgPrice: canSeePrices() && $('#editIncomingKgPrice') ? $('#editIncomingKgPrice').value : '',
       targetShelf: $('#editIncomingShelf').value,
       note: $('#editIncomingNote').value
     };
@@ -4129,7 +4219,7 @@ window.openEditDirectIncomingModal = (orderId) => {
 window.updateOrder = async (orderId, action, orderedAmount = null, note = '', orderedSheets = 0, kgPrice = '', customerName = undefined) => {
   try {
     const payload = { action, orderedAmount, orderedSheets, note, kgPrice };
-    if (customerName !== undefined) payload.customerName = customerName;
+    if (customerName !== undefined) { payload.customerName = customerName; payload.supplierName = customerName; }
     await api(`/api/orders/${orderId}`, { method: 'PATCH', body: JSON.stringify(payload) });
     showToast('Bestellung aktualisiert', 'Der neue Status wurde an alle Arbeitsplätze übertragen.');
     await loadState(true);
