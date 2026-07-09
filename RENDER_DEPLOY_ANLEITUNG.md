@@ -1,5 +1,5 @@
-# Render Deployment v2.9
+# Render Deployment v3.0
 
-ZIP hochladen oder Repository aktualisieren.
+Version v3.0 erweitert den kurzen Material-CSV-Export um das Format.
 
-Version v2.9 reduziert den Material-CSV-Export auf Material, Bestand und KG-Preis.
+Beim Deploy wie gewohnt Repository aktualisieren und Render neu bauen lassen.

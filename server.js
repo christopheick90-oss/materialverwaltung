@@ -217,7 +217,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '2.9';
+const PROGRAM_VERSION = '3.0';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -1908,6 +1908,11 @@ function csvCalculatedWeightKg(material, packages) {
   return packageWeight > 0 && packages > 0 ? packageWeight * packages : 0;
 }
 
+function csvReadableFormat(material) {
+  const format = normalizeFormat(material && material.format);
+  return format ? format.replace(/x/gi, ' x ') : '';
+}
+
 function materialsToCsv(materials, options = {}) {
   const list = Array.isArray(materials) ? materials.slice() : [];
   list.sort((a, b) => {
@@ -1918,7 +1923,7 @@ function materialsToCsv(materials, options = {}) {
     return normalizeFormat(a && a.format).localeCompare(normalizeFormat(b && b.format), 'de', { numeric: true });
   });
 
-  const header = ['Material', 'Bestand', 'KG-Preis €/kg'];
+  const header = ['Material', 'Format', 'Bestand', 'KG-Preis €/kg'];
   const dataRows = list.map(material => {
     const stock = csvStockValues(material);
     const materialLabel = [
@@ -1927,6 +1932,7 @@ function materialsToCsv(materials, options = {}) {
     ].filter(Boolean).join(' · ');
     return [
       materialLabel,
+      csvReadableFormat(material),
       stock.totalLabel,
       csvKgPriceValue(material)
     ];

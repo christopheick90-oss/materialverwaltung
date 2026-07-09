@@ -1,5 +1,5 @@
-Eckl Lagerverwaltung v2.9 starten.
+Eckl Lagerverwaltung v3.0 starten.
 
-Änderung in v2.9:
-Der Material-CSV-Export ist wieder kurz und sauber:
-Material; Bestand; KG-Preis €/kg.
+Änderung in v3.0:
+- Material-CSV enthält jetzt Material, Format, Bestand und KG-Preis.
+- Export bleibt sauber, kurz und Excel-freundlich.

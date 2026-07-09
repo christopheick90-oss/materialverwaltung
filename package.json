@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "2.9.0",
-  "description": "Eckl Eco Technics Materialverwaltung V2.9 - einfacher Material-CSV-Export",
+  "version": "3.0.0",
+  "description": "Eckl Eco Technics Materialverwaltung V3.0 - sauberer Material-CSV-Export mit Format",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

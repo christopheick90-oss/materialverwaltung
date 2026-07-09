@@ -1,18 +1,16 @@
-# Eckl Lagerverwaltung v2.9
+# Eckl Lagerverwaltung v3.0
 
-Änderung: Der Material-CSV-Export wurde wieder auf das Wesentliche reduziert.
+### v3.0 CSV-Export
 
-Exportiert werden nur noch:
+Der Material-CSV-Export ist bewusst kurz und professionell gehalten.
+
+Spalten:
+
 - Material
+- Format
 - Bestand
 - KG-Preis €/kg
 
-Der Export bleibt nur für Büro/Chef/Admin verfügbar. Laser sieht weiterhin keine KG-Preise.
+Die CSV enthält weiterhin `sep=;`, damit Excel die Spalten direkt sauber trennt.
 
-Master-Design bleibt unverändert.
-
-### v2.9 CSV-Export
-- Keine großen Kopfbereiche mehr.
-- Keine Zusatzspalten mehr.
-- Excel-Trennzeichen `sep=;` bleibt erhalten, damit Excel die Spalten sauber trennt.
-- Material enthält Materialname und Stärke, damit die Zeile eindeutig bleibt.
+Das Master-Design bleibt unverändert.
