@@ -217,7 +217,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '2.6';
+const PROGRAM_VERSION = '2.7';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -879,7 +879,7 @@ function densityInfoForMaterial(material) {
   const text = densitySearchText(material);
   const compact = text.replace(/[\s_.\-/]/g, '');
   if (/\b(en\s*aw[-\s]*)?5754\b/.test(text) || compact.includes('almg3') || text.includes('al mg3')) {
-    return { factor: 2.68, label: 'AlMg3 / EN AW-5754' };
+    return { factor: 2.78, label: 'AlMg3 / EN AW-5754' };
   }
   if (compact.includes('almg') || text.includes('alu') || text.includes('aluminium')) {
     return { factor: 2.70, label: 'Aluminium allgemein' };
@@ -1847,13 +1847,20 @@ function csvEscape(value) {
   return /[;"\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+function csvKgPriceValue(material) {
+  const value = material && material.kgPrice !== undefined && material.kgPrice !== null && material.kgPrice !== ''
+    ? Math.max(0, numberOr(material.kgPrice, 0))
+    : null;
+  return value === null ? '' : value.toFixed(2).replace('.', ',');
+}
+
 function materialsToCsv(materials) {
-  const header = ['Material','Stärke','Größe','Regal','Tafeln','Pakete','Mindestbestand','Bereich','Resttafel','Paketnummern','Archiviert'];
+  const header = ['Material','Stärke','Größe','Regal','Tafeln','Pakete','Mindestbestand','Bereich','Resttafel','Paketnummern','KG-Preis €/kg','Archiviert'];
   const rows = materials.map(m => [
     m.name, m.thickness, m.format, m.shelf,
     m.storage === 'KONSI' ? 0 : (Number(m.sheetStock ?? m.stock) || 0),
     m.storage === 'KONSI' ? (Number(m.stock) || 0) : (Number(m.packageStock) || 0),
-    m.minStock, m.storage, m.rest ? 'ja' : 'nein', normalizePackageNumbers(m.packageNumbers).join(','), m.archived ? 'ja' : 'nein'
+    m.minStock, m.storage, m.rest ? 'ja' : 'nein', normalizePackageNumbers(m.packageNumbers).join(','), csvKgPriceValue(m), m.archived ? 'ja' : 'nein'
   ]);
   return [header, ...rows].map(row => row.map(csvEscape).join(';')).join('\n');
 }

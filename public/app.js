@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '2.6';
+const CLIENT_VERSION = '2.7';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -469,7 +469,7 @@ function densityInfoForMaterial(material) {
   const text = densitySearchText(material);
   const compact = text.replace(/[\s_.\-/]/g, '');
   if (/\b(en\s*aw[-\s]*)?5754\b/.test(text) || compact.includes('almg3') || text.includes('al mg3')) {
-    return { factor: 2.68, label: 'AlMg3 / EN AW-5754' };
+    return { factor: 2.78, label: 'AlMg3 / EN AW-5754' };
   }
   if (compact.includes('almg') || text.includes('alu') || text.includes('aluminium')) {
     return { factor: 2.70, label: 'Aluminium allgemein' };

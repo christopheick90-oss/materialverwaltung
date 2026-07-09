@@ -1,8 +1,12 @@
-# Eckl Lagerverwaltung v2.6
+# Eckl Lagerverwaltung v2.7
 
-Änderung: Neuer Reiter „Ausgebucht“ für komplett ausgebuchte Materialien. Beim Ausbuchen wird das Material aus der aktiven Materialliste genommen und als Materialkarte im Reiter „Ausgebucht“ abgelegt. Werkszeugnis sowie vorhandene AB- und Lieferschein-PDFs vom passenden Lieferanten/Datum werden übernommen und bleiben dort abrufbar.
+Änderung: Materialkarten und Ausgebucht-Karten wurden lesbarer gemacht. Lange Materialnamen, Lieferanten, Formate, Teilenummern, Preise und PDF-Namen brechen jetzt sauber um und stehen nicht mehr über andere Inhalte.
+
+Zusätzlich enthält der Material-CSV-Export jetzt den KG-Preis. Der Export bleibt nur für Büro/Chef/Admin verfügbar.
 
 Master-Design bleibt unverändert.
 
-### v2.6
-Ausgebuchte Materialien haben jetzt nachträgliche PDF-Uploads für Werkszeugnis, AB und Lieferschein, sehen wie normale Materialkarten aus und können von Büro/Chef/Admin bearbeitet oder rückgängig gemacht werden.
+### v2.7
+- Materialkarten besser lesbar, kein Abschneiden/Überlagern langer Werte.
+- Ausgebucht-Karten besser lesbar, inklusive PDF-Dokumentnamen und Quelle.
+- Materialliste CSV enthält jetzt „KG-Preis €/kg“.

@@ -1,3 +1,3 @@
-# Render Deployment v2.6
+# Render Deployment v2.7
 
-ZIP hochladen oder Repository aktualisieren. Version v2.6 enthält den neuen Reiter „Ausgebucht“ mit Dokumentenübernahme.
+ZIP hochladen oder Repository aktualisieren. Version v2.7 enthält lesbare Material-/Ausgebucht-Karten und den KG-Preis im Material-CSV-Export.
