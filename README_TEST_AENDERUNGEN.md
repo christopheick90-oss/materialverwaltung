@@ -1,4 +1,4 @@
-# Teständerungen V2.5
+# Teständerungen V2.6
 
 - Material über „Komplett ausbuchen“ ausbuchen.
 - Prüfen, dass es aus der normalen Materialliste verschwindet.
@@ -8,7 +8,7 @@
 - Laser sieht weiterhin keine KG-Preise/Werte.
 - Master-Design bleibt unverändert.
 
-## v2.5
+## v2.6
 - Reiter Ausgebucht optisch an normale Materialkarten angepasst.
 - Ausgebuchte Materialkarten können nachträglich mit Werkszeugnis, AB und Lieferschein als PDF ergänzt werden.
 - Büro/Chef/Admin können ausgebuchte Karten bearbeiten, inklusive Lieferant, Format, Stärke, Menge, Bemerkung, Gewicht und KG-Preis. Leer gelassener KG-Preis entfernt den Preis.

@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '2.5';
+const CLIENT_VERSION = '2.6';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -2295,7 +2295,8 @@ function writtenOffSearchText(item) {
     writtenOffTitle(item), item.materialFormat, item.supplier, item.shelf, item.compartment, item.articleNumber,
     item.quantityBefore, item.note, item.writtenOffBy, item.writtenOffAt ? fmtDate(item.writtenOffAt) : '',
     item.sourceCustomerName, item.sourceDateKey,
-    ...(Array.isArray(item.documents) ? item.documents.map(doc => [doc.label, doc.originalName, doc.uploadedBy].join(' ')) : [])
+    item.certificate ? [item.certificate.originalName, item.certificate.uploadedBy, 'Werkszeugnis'].join(' ') : '',
+    ...(Array.isArray(item.documents) ? item.documents.map(doc => [doc.label, doc.originalName, doc.uploadedBy, doc.sourceCustomerName].join(' ')) : [])
   ].join(' ').toLowerCase();
 }
 
@@ -2306,11 +2307,49 @@ function filteredWrittenOffList() {
     .sort((a, b) => new Date(b.writtenOffAt || 0) - new Date(a.writtenOffAt || 0));
 }
 
-function writtenOffDocumentButtons(item) {
+function writtenOffDocumentRows(item) {
+  const rows = [];
+  if (item.certificate && item.certificate.fileName) {
+    rows.push({
+      id: 'certificate',
+      label: 'Werkszeugnis',
+      originalName: item.certificate.originalName || 'Werkszeugnis.pdf',
+      uploadedAt: item.certificate.uploadedAt || '',
+      uploadedBy: item.certificate.uploadedBy || '',
+      source: 'Material',
+      onclick: `openWrittenOffCertificate('${jsString(item.id)}')`
+    });
+  }
   const docs = Array.isArray(item.documents) ? item.documents : [];
-  if (!docs.length) return '';
-  return `<div class="written-off-docs">
-    ${docs.map(doc => `<button class="ghost mini" onclick="openWrittenOffDocument('${jsString(item.id)}','${jsString(doc.id || doc.fileName)}')">${escapeHtml(doc.label || doc.type || 'PDF')}</button>`).join('')}
+  docs.forEach(doc => {
+    rows.push({
+      id: doc.id || doc.fileName,
+      label: doc.label || doc.type || 'PDF',
+      originalName: doc.originalName || 'Dokument.pdf',
+      uploadedAt: doc.uploadedAt || '',
+      uploadedBy: doc.uploadedBy || '',
+      source: doc.sourceCustomerName ? `Lieferant: ${doc.sourceCustomerName}${doc.sourceDateKey ? ` · ${orderDayLabel(doc.sourceDateKey)}` : ''}` : 'Ausgebucht',
+      onclick: `openWrittenOffDocument('${jsString(item.id)}','${jsString(doc.id || doc.fileName)}')`
+    });
+  });
+  return rows;
+}
+
+function renderWrittenOffDocuments(item) {
+  const rows = writtenOffDocumentRows(item);
+  if (!rows.length) return '';
+  return `<div class="written-off-doc-panel">
+    <div class="written-off-doc-head"><strong>Dokumente</strong><span>${rows.length} PDF${rows.length === 1 ? '' : 's'}</span></div>
+    <div class="written-off-doc-list">
+      ${rows.map(row => `<div class="written-off-doc-item">
+        <div>
+          <strong>${escapeHtml(row.label)}</strong>
+          <small>${escapeHtml(row.originalName)}${row.uploadedAt ? ` · ${escapeHtml(fmtDate(row.uploadedAt))}` : ''}${row.uploadedBy ? ` · ${escapeHtml(row.uploadedBy)}` : ''}</small>
+          <small>${escapeHtml(row.source)}</small>
+        </div>
+        <button class="ghost mini" onclick="${row.onclick}">Öffnen</button>
+      </div>`).join('')}
+    </div>
   </div>`;
 }
 
@@ -2319,29 +2358,38 @@ function writtenOffStatusBadge(item) {
 }
 
 function renderWrittenOffCard(item) {
-  const fill = 0;
+  const quantityBefore = item.quantityBefore || `${item.stockBefore || 0}`;
+  const storageLabel = item.storage === 'KONSI' ? 'Konsi' : 'Material';
   const priceLine = canSeePrices() ? [
     item.kgPrice !== undefined && item.kgPrice !== null && item.kgPrice !== '' ? `KG-Preis: ${formatKgPrice(item.kgPrice)}` : '',
     Number(item.totalWeightKg) > 0 ? `Gewicht: ${String(Number(item.totalWeightKg).toFixed(1)).replace('.', ',')} kg` : '',
     Number(item.totalPrice) > 0 ? `Wert: ${formatMoney(item.totalPrice)}` : ''
   ].filter(Boolean).join(' · ') : '';
+  const sourceText = `${item.sourceCustomerName || item.supplier || 'Ohne Lieferant'}${item.sourceDateKey ? ` · ${orderDayLabel(item.sourceDateKey)}` : ''}`;
   return `<div class="material-card written-off-card">
-    <div class="material-head"><h3>${escapeHtml(writtenOffTitle(item))}</h3>${writtenOffStatusBadge(item)}</div>
-    <div class="meta compact-material">
-      <div><span>Menge vorher</span><strong>${escapeHtml(item.quantityBefore || `${item.stockBefore || 0}`)}</strong></div>
+    <div class="material-head">
+      <h3>${escapeHtml(writtenOffTitle(item))}</h3>
+      <div class="written-off-badges">
+        <span class="badge gray">Ausgebucht</span>
+        <span class="badge red">${escapeHtml(storageLabel)}</span>
+      </div>
+    </div>
+    <div class="written-off-mainline">
+      <div><span>Menge vorher</span><strong>${escapeHtml(quantityBefore)}</strong></div>
       <div><span>Format</span><strong>${escapeHtml(formatDisplayValue(item.materialFormat || '-'))}</strong></div>
+    </div>
+    <div class="meta compact-material written-off-meta">
       <div><span>Lieferant</span><strong>${escapeHtml(item.supplier || item.sourceCustomerName || 'Ohne Lieferant')}</strong></div>
-      <div><span>Ablage vorher</span><strong>${escapeHtml([item.shelf, item.compartment].filter(Boolean).join(' · ') || '-')}</strong></div>
-      <div><span>Ausgebucht</span><strong>${escapeHtml(fmtDate(item.writtenOffAt))}</strong></div>
+      <div><span>Lagerplatz vorher</span><strong>${escapeHtml([item.shelf, item.compartment].filter(Boolean).join(' · ') || '-')}</strong></div>
+      <div><span>Ausgebucht am</span><strong>${escapeHtml(fmtDate(item.writtenOffAt))}</strong></div>
+      <div><span>Von</span><strong>${escapeHtml(item.writtenOffBy || '-')}</strong></div>
       ${item.articleNumber ? `<div><span>Teilenr.</span><strong>${escapeHtml(item.articleNumber)}</strong></div>` : ''}
       ${priceLine ? `<div class="form-full"><span>Preis</span><strong>${escapeHtml(priceLine)}</strong></div>` : ''}
     </div>
-    <div class="stock-fill"><span style="width:${fill}%"></span></div>
-    <div class="small muted">Ausgebucht von ${escapeHtml(item.writtenOffBy || '-')} · Quelle: ${escapeHtml(item.sourceCustomerName || item.supplier || 'Ohne Lieferant')}${item.sourceDateKey ? ` · ${escapeHtml(orderDayLabel(item.sourceDateKey))}` : ''}</div>
+    <div class="written-off-source"><span>Quelle</span><strong>${escapeHtml(sourceText)}</strong></div>
     ${item.note ? `<div class="notice small">${escapeHtml(item.note)}</div>` : ''}
-    ${writtenOffDocumentButtons(item)}
-    <div class="actions">
-      ${item.certificate ? `<button class="ghost mini" onclick="openWrittenOffCertificate('${jsString(item.id)}')">Werkszeugnis</button>` : ''}
+    ${renderWrittenOffDocuments(item)}
+    <div class="actions written-off-actions">
       ${canManageWrittenOff() ? `<button class="ghost mini" onclick="uploadWrittenOffCertificate('${jsString(item.id)}')">${item.certificate ? 'Werkszeugnis ändern' : 'Werkszeugnis PDF'}</button>` : ''}
       ${canManageWrittenOff() ? `<button class="ghost mini" onclick="uploadWrittenOffConfirmation('${jsString(item.id)}')">AB PDF</button>` : ''}
       ${canManageWrittenOff() ? `<button class="ghost mini" onclick="uploadWrittenOffDeliveryNote('${jsString(item.id)}')">Lieferschein PDF</button>` : ''}

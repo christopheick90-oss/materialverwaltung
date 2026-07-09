@@ -307,3 +307,25 @@ button.active-filter{background:#222!important;color:#fff!important;border-color
 .written-off-card .notice{margin-top:10px}
 .written-off-docs{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .written-off-card .actions{align-items:center}
+
+/* V2.6: Ausgebucht-Karten näher an Materialkarten angepasst */
+.material-card.written-off-card{border-left-color:var(--red);background:#fff;display:flex;flex-direction:column;gap:7px}
+.written-off-badges{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.written-off-mainline{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px}
+.written-off-mainline div{background:linear-gradient(180deg,#2b2b2b,#111);color:#fff;border-bottom:3px solid var(--red);border-radius:10px;padding:8px 9px;min-width:0}
+.written-off-mainline span{display:block;font-size:9px;font-weight:900;color:#ddd;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
+.written-off-mainline strong{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.written-off-meta{margin-top:0}
+.written-off-source{background:#f7f7f7;border:1px solid #e1e1e1;border-left:4px solid var(--red);border-radius:10px;padding:7px 9px;margin-top:1px}
+.written-off-source span{display:block;font-size:9px;font-weight:900;color:#777;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
+.written-off-source strong{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.written-off-doc-panel{border:1px solid #ddd;border-radius:11px;overflow:hidden;background:#fff;margin-top:4px}
+.written-off-doc-head{display:flex;justify-content:space-between;gap:8px;align-items:center;background:#f4f4f4;border-bottom:1px solid #ddd;padding:8px 9px;font-size:12px}
+.written-off-doc-head span{color:#666;font-weight:900}
+.written-off-doc-list{display:grid;gap:0}
+.written-off-doc-item{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:8px 9px;border-bottom:1px solid #eee}
+.written-off-doc-item:last-child{border-bottom:0}
+.written-off-doc-item strong{display:block;font-size:12px;color:#111}
+.written-off-doc-item small{display:block;color:#666;font-size:10px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.written-off-actions{border-top:1px solid #eee;padding-top:8px;margin-top:4px}
+@media(max-width:650px){.written-off-mainline{grid-template-columns:1fr 1fr}.written-off-doc-item{grid-template-columns:1fr}.written-off-doc-item button{width:max-content}}
