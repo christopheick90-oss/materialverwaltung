@@ -217,7 +217,7 @@ function normalizeFormat(value) {
 const ALLOWED_SHELVES = ['Regal 1', 'Regal 2', 'Regal 3', 'Regal 4', 'Regal 5', 'Regal 6', 'Carport', 'Bodenhaltung'];
 const ALLOWED_FORMATS = ['4000x2000', '3000x1500', '2500x1250', '2000x1000'];
 const ALLOWED_ROLES = ['LASER', 'BUERO', 'CHEF', 'ADMIN'];
-const PROGRAM_VERSION = '3.0';
+const PROGRAM_VERSION = '3.3';
 const KONSI_LOCATION = 'Garage';
 const DEFAULT_MATERIAL_MIN_STOCK = 2; // Fester Mindestbestand: nur normale Tafeln warnen ab 2 Tafeln. Pakete/Konsi/Resttafeln sind ausgenommen.
 const APP_NAME = 'Eckl Eco Technics - Materialverwaltung';
@@ -694,7 +694,11 @@ function orderCustomerKey(order) {
 }
 
 function orderDayKey(order) {
-  return dateOnlyFromIso((order && (order.orderedAt || order.createdAt || order.lastUpdate)) || nowIso());
+  return dateOnlyFromIso((order && (order.deliveryDate || order.orderedAt || order.createdAt || order.lastUpdate)) || nowIso());
+}
+
+function orderDeliveryDateValue(order) {
+  return normalizeDateOnly(order && order.deliveryDate, '');
 }
 
 function normalizeOrderDayConfirmations(raw) {
@@ -1497,6 +1501,7 @@ function migrateDb(db) {
       customerKey: 'ohne_kunde',
       supplierName: DEFAULT_CUSTOMER_GROUP,
       supplierKey: 'ohne_kunde',
+      deliveryDate: '',
       storage: material ? material.storage : 'HAUPTLAGER',
       ...order
     };
@@ -1506,6 +1511,7 @@ function migrateDb(db) {
     normalizedOrder.customerKey = orderCustomerKey(normalizedOrder);
     normalizedOrder.supplierName = normalizedOrder.customerName;
     normalizedOrder.supplierKey = normalizedOrder.customerKey;
+    normalizedOrder.deliveryDate = normalizeDateOnly(normalizedOrder.deliveryDate, '');
     if (normalizedOrder.konsiOrder === true) normalizedOrder.storage = 'KONSI';
     normalizedOrder.receivedAmount = Math.max(0, numberOr(normalizedOrder.receivedAmount, 0));
     normalizedOrder.receivedSheets = Math.max(0, numberOr(normalizedOrder.receivedSheets, 0));
@@ -1840,6 +1846,34 @@ function createBackup(label = '') {
   const backup = { meta: { appName: APP_NAME, version: PROGRAM_VERSION, createdAt: nowIso(), label: cleanText(label, '') }, data: db };
   fs.writeFileSync(path.join(dir, file), JSON.stringify(backup, null, 2));
   return listBackups().find(b => b.file === file) || { file, createdAt: nowIso(), size: 0 };
+}
+
+function saveUploadedBackupFile(payload, label = '') {
+  const dir = backupDirPath();
+  const stamp = new Date().toISOString().replace(/[:]/g, '-');
+  const file = `backup-${stamp}.json`;
+  const backup = payload && payload.data
+    ? { ...payload, meta: { ...(payload.meta || {}), uploadedAt: nowIso(), uploadedLabel: cleanText(label, '') } }
+    : { meta: { appName: APP_NAME, version: PROGRAM_VERSION, createdAt: nowIso(), uploadedAt: nowIso(), label: cleanText(label, 'Hochgeladenes Backup') }, data: payload };
+  fs.writeFileSync(path.join(dir, file), JSON.stringify(backup, null, 2));
+  return listBackups().find(b => b.file === file) || { file, createdAt: nowIso(), size: 0 };
+}
+
+function parseUploadedBackupPayload(body) {
+  const raw = cleanText(body && (body.content || body.data || body.backup), '');
+  if (!raw) { const err = new Error('Bitte eine Backup-Datei auswählen.'); err.statusCode = 400; throw err; }
+  const base64 = raw.includes('base64,') ? raw.split('base64,').pop() : '';
+  let text = raw;
+  if (base64) {
+    try { text = Buffer.from(base64, 'base64').toString('utf8'); } catch (_) { const err = new Error('Backup-Datei konnte nicht gelesen werden.'); err.statusCode = 400; throw err; }
+  }
+  text = String(text || '').replace(/^\uFEFF/, '').trim();
+  if (!text) { const err = new Error('Backup-Datei ist leer.'); err.statusCode = 400; throw err; }
+  let payload;
+  try { payload = JSON.parse(text); } catch (_) { const err = new Error('Backup muss eine gültige JSON-Datei aus dieser Software sein.'); err.statusCode = 400; throw err; }
+  const restored = payload && payload.data ? payload.data : payload;
+  if (!restored || typeof restored !== 'object' || Array.isArray(restored)) { const err = new Error('Backup enthält keine gültigen Daten.'); err.statusCode = 400; throw err; }
+  return { payload, restored };
 }
 
 function csvEscape(value) {
@@ -2302,6 +2336,7 @@ function buildState(user) {
       canMarkOrdered: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canReceiveDelivery: ['LASER', 'BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canCreateMaterial: ['BUERO', 'CHEF', 'ADMIN'].includes(user.role),
+      canCreateRestMaterial: ['LASER', 'BUERO', 'CHEF', 'ADMIN'].includes(user.role),
       canEditMaterial: user.role === 'ADMIN',
       canCorrectMaterial: user.role === 'ADMIN',
       canDeleteMaterial: ['CHEF', 'ADMIN'].includes(user.role),
@@ -2609,6 +2644,48 @@ app.post('/api/materials', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), (r
     saveDb();
     emitToAll('material:created', { material, activity, message: `Neues Material angelegt: ${materialTitleText(material)}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
     emitToAll('state:changed', { reason: 'material:created' });
+    res.status(201).json({ material });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+
+app.post('/api/materials/rest', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN'), (req, res) => {
+  try {
+    const sheetStock = Math.max(1, Math.floor(numberOr(req.body.sheetStock ?? req.body.stock, 1)));
+    const material = materialPayload({
+      ...req.body,
+      category: 'Resttafeln',
+      type: 'Resttafel',
+      unit: 'Tafeln',
+      stock: sheetStock,
+      packageStock: 0,
+      sheetStock,
+      packageNumbers: [],
+      minStock: 0,
+      storage: 'HAUPTLAGER',
+      rest: true
+    });
+    const duplicate = findDuplicateMaterial(material);
+    if (duplicate && !req.body.forceDuplicate && !req.body.mergeDuplicate) return duplicateResponse(res, duplicate, material);
+    if (duplicate && req.body.mergeDuplicate) {
+      const before = materialSnapshotById(duplicate.id);
+      mergeMaterialQuantities(duplicate, material);
+      duplicate.rest = true;
+      duplicate.minStock = 0;
+      duplicate.updatedAt = nowIso();
+      const activity = addActivity('MATERIAL', `${req.user.name} hat Resttafel zu ${materialTitleText(duplicate)} hinzugefügt: ${quantityText(duplicate)}.`, req.user, { materialId: duplicate.id, undo: makeUndo('RESTTAFEL_MERGE', [before], 'Resttafel-Menge rückgängig') });
+      saveDb();
+      emitToAll('material:updated', { material: duplicate, activity, message: `Resttafel ergänzt: ${materialTitleText(duplicate)}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+      emitToAll('state:changed', { reason: 'material:rest-merged' });
+      return res.status(200).json({ material: duplicate, merged: true });
+    }
+    db.materials.unshift(material);
+    const activity = addActivity('MATERIAL', `${req.user.name} hat Resttafel angelegt: ${materialTitleText(material)}${material.format ? ` · Format: ${material.format}` : ''}.`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_CREATE', [{ id: material.id, existed: false, material: null }], 'Resttafel-Anlage rückgängig') });
+    saveDb();
+    emitToAll('material:created', { material, activity, message: `Neue Resttafel angelegt: ${materialTitleText(material)}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
+    emitToAll('state:changed', { reason: 'material:rest-created' });
     res.status(201).json({ material });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -3096,15 +3173,31 @@ app.post('/api/materials/:id/stock', requireAuth, allowRoles('LASER', 'BUERO', '
     material.stock = qty;
   } else return res.status(400).json({ error: 'Unbekannte Bestandsaktion.' });
 
-  material.updatedAt = nowIso();
+  const changedAt = nowIso();
+  let autoArchivedFromIncoming = false;
+  if (action === 'REMOVE' && beforeSnapshot.material && beforeSnapshot.material.deliveryPending && (Number(material.stock) || 0) <= 0) {
+    material.packageNumbers = [];
+    material.packageStock = 0;
+    material.sheetStock = 0;
+    material.stock = 0;
+    material.deliveryPending = false;
+    material.deliveryStatus = '';
+    material.archived = true;
+    material.archiveReason = 'WARENEINGANG_LEER_ENTNOMMEN';
+    material.archivedAt = changedAt;
+    material.archivedBy = req.user.name;
+    autoArchivedFromIncoming = true;
+  }
+  material.updatedAt = changedAt;
   const actionText = action === 'REMOVE' ? 'entnommen' : action === 'ADD' ? 'zugebucht' : 'Bestand korrigiert';
   const beforeText = isKonsi ? `${beforeStock} Pakete` : `${beforeStock} ${material.unit || 'Tafeln'}`;
   const afterText = quantityText(material);
   const targetText = isKonsi && action === 'REMOVE' ? ` Paketnummer: ${packageNumber}. Ziel: ${targetShelf || '-'}.` : '';
   const extra = note ? ` Hinweis: ${note}` : '';
+  const autoRemoveText = autoArchivedFromIncoming ? ' Die Wareneingangsposition war danach leer und wurde automatisch entfernt.' : '';
   const activityType = action === 'SET' ? 'KORREKTUR' : 'BESTAND';
   const undoLabel = action === 'SET' ? 'Korrektur rückgängig' : 'Bestandsbuchung rückgängig';
-  const activity = addActivity(activityType, `${req.user.name} hat ${materialTitleText(material)}${materialActivityInfoText(material)}: ${actionText} (${beforeText} → ${afterText}).${targetText}${extra}`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_STOCK', [beforeSnapshot], undoLabel) });
+  const activity = addActivity(activityType, `${req.user.name} hat ${materialTitleText(material)}${materialActivityInfoText(material)}: ${actionText} (${beforeText} → ${afterText}).${targetText}${autoRemoveText}${extra}`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_STOCK', [beforeSnapshot], undoLabel) });
   saveDb();
   emitToAll('material:changed', { material, activity, message: `${material.name}: ${beforeText} → ${afterText}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   if (isMaterialLow(material)) {
@@ -3122,8 +3215,24 @@ app.post('/api/materials/:id/remove', requireAuth, allowRoles('LASER', 'BUERO', 
   const beforeSnapshot = materialSnapshotById(material.id);
   const before = Number(material.stock);
   material.stock = Math.max(0, before - qty);
-  material.updatedAt = nowIso();
-  const activity = addActivity('BESTAND', `${req.user.name} hat ${materialTitleText(material)}${materialActivityInfoText(material)}: entnommen (${before} → ${material.stock}).`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_REMOVE', [beforeSnapshot], 'Entnahme rückgängig') });
+  const changedAt = nowIso();
+  let autoArchivedFromIncoming = false;
+  if (beforeSnapshot.material && beforeSnapshot.material.deliveryPending && (Number(material.stock) || 0) <= 0) {
+    material.packageNumbers = [];
+    material.packageStock = 0;
+    material.sheetStock = 0;
+    material.stock = 0;
+    material.deliveryPending = false;
+    material.deliveryStatus = '';
+    material.archived = true;
+    material.archiveReason = 'WARENEINGANG_LEER_ENTNOMMEN';
+    material.archivedAt = changedAt;
+    material.archivedBy = req.user.name;
+    autoArchivedFromIncoming = true;
+  }
+  material.updatedAt = changedAt;
+  const autoRemoveText = autoArchivedFromIncoming ? ' Die Wareneingangsposition war danach leer und wurde automatisch entfernt.' : '';
+  const activity = addActivity('BESTAND', `${req.user.name} hat ${materialTitleText(material)}${materialActivityInfoText(material)}: entnommen (${before} → ${material.stock}).${autoRemoveText}`, req.user, { materialId: material.id, undo: makeUndo('MATERIAL_REMOVE', [beforeSnapshot], 'Entnahme rückgängig') });
   saveDb();
   emitToAll('material:changed', { material, activity, message: `${material.name}: Bestand ${before} → ${material.stock}`, targetRoles: ['LASER', 'BUERO', 'CHEF', 'ADMIN'] });
   if (isMaterialLow(material)) {
@@ -3478,16 +3587,21 @@ app.post('/api/orders', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN
   }
   if (storage === 'KONSI' && sheets > 0) return res.status(400).json({ error: 'Konsi-Bestellungen bitte als Paket erfassen.' });
 
+  const canSetOrderDetails = ['BUERO', 'CHEF', 'ADMIN'].includes(req.user.role);
+  const supplierInput = canSetOrderDetails ? (req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName) : '';
+  const supplierName = normalizeCustomerName(supplierInput);
+  const supplierKey = normalizeCustomerKey(supplierName);
+
   const order = {
     id: uid('o'),
     materialId: material ? material.id : '',
     materialName,
     materialFormat,
     materialThickness,
-    customerName: normalizeCustomerName(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
-    customerKey: normalizeCustomerKey(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
-    supplierName: normalizeCustomerName(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
-    supplierKey: normalizeCustomerKey(req.body.supplierName !== undefined ? req.body.supplierName : req.body.customerName),
+    customerName: supplierName,
+    customerKey: supplierKey,
+    supplierName,
+    supplierKey,
     storage,
     requestedAmount: storage === 'KONSI' ? amount : amount,
     requestedSheets: storage === 'KONSI' ? 0 : sheets,
@@ -3502,6 +3616,7 @@ app.post('/api/orders', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN
     approvedAt: null,
     orderedBy: null,
     orderedAt: null,
+    deliveryDate: '',
     receivedAmount: 0,
     receivedSheets: 0,
     receivedBy: null,
@@ -3522,7 +3637,7 @@ app.post('/api/orders', requireAuth, allowRoles('LASER', 'BUERO', 'CHEF', 'ADMIN
     lastUpdate: nowIso()
   };
   let certificateUpload = null;
-  try { certificateUpload = optionalCertificateUploadFromBody(req.body); } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
+  try { certificateUpload = canSetOrderDetails ? optionalCertificateUploadFromBody(req.body) : null; } catch (error) { return res.status(error.statusCode || 400).json({ error: error.message }); }
   if (certificateUpload) {
     if (material) {
       const certificate = assignMaterialCertificate(material, certificateUpload, req.user);
@@ -3582,6 +3697,7 @@ app.post('/api/orders/manual', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN')
     approvedAt: null,
     orderedBy: req.user.name,
     orderedAt: createdAt,
+    deliveryDate: normalizeDateOnly(req.body.deliveryDate, '') || dateOnlyFromIso(createdAt),
     receivedAmount: 0,
     receivedSheets: 0,
     receivedBy: null,
@@ -3629,9 +3745,11 @@ app.patch('/api/orders/:id', requireAuth, allowRoles('BUERO', 'CHEF', 'ADMIN'), 
     if (!Number.isFinite(normalizedAmount) || !Number.isFinite(normalizedSheets)) return res.status(400).json({ error: 'Bitte eine gültige bestellte Menge eingeben.' });
     if (order.storage === 'KONSI' && normalizedAmount <= 0) return res.status(400).json({ error: 'Bitte eine gültige Paketmenge eingeben.' });
     if (order.storage !== 'KONSI' && normalizedAmount <= 0 && normalizedSheets <= 0) return res.status(400).json({ error: 'Bitte bestellte Pakete oder Tafeln eintragen.' });
+    const deliveryDate = normalizeDateOnly(req.body.deliveryDate, '') || dateOnlyFromIso(changedAt);
     order.status = 'BESTELLT';
     order.orderedBy = req.user.name;
     order.orderedAt = changedAt;
+    order.deliveryDate = deliveryDate;
     order.orderedAmount = normalizedAmount;
     order.orderedSheets = normalizedSheets;
     if (note) order.note = note;
@@ -4251,6 +4369,7 @@ app.post('/api/orders/direct-receive', requireAuth, allowRoles('LASER', 'BUERO',
     approvedAt: null,
     orderedBy: req.user.name,
     orderedAt: receivedAt,
+    deliveryDate: dateOnlyFromIso(receivedAt),
     receivedAmount: packages,
     receivedSheets: sheets,
     receivedBy: req.user.name,
@@ -4417,6 +4536,7 @@ app.put('/api/orders/:id/direct-receive', requireAuth, allowRoles('BUERO', 'CHEF
   order.deliveredToShelf = targetShelf;
   order.receivedBy = req.user.name;
   order.receivedAt = correctionAt;
+  if (order.directIncoming && !order.deliveryDate) order.deliveryDate = dateOnlyFromIso(correctionAt);
   order.doneBy = req.user.name;
   order.doneAt = correctionAt;
   const orderedPackages = Math.max(0, numberOr(order.orderedAmount, 0));
@@ -4495,6 +4615,21 @@ app.post('/api/admin/backups/:file/restore', requireAuth, allowRoles('ADMIN'), (
     res.json({ ok: true, backups: listBackups() });
   } catch (error) {
     res.status(400).json({ error: 'Backup konnte nicht wiederhergestellt werden.' });
+  }
+});
+
+app.post('/api/admin/backups/upload-restore', requireAuth, allowRoles('ADMIN'), (req, res) => {
+  try {
+    const beforeBackup = createBackup(`Automatisch vor Backup-Upload durch ${req.user.name}`);
+    const { payload, restored } = parseUploadedBackupPayload(req.body);
+    const uploadedBackup = saveUploadedBackupFile(payload, `Hochgeladen und wiederhergestellt durch ${req.user.name}`);
+    db = migrateDb(restored);
+    addActivity('SYSTEM', `${req.user.name} hat ein hochgeladenes Backup wiederhergestellt: ${uploadedBackup.file}. Vorherige Sicherung: ${beforeBackup.file}.`, req.user);
+    saveDb();
+    emitToAll('state:changed', { reason: 'backup:uploaded-restored' });
+    res.json({ ok: true, restoredFrom: uploadedBackup, beforeBackup, backups: listBackups() });
+  } catch (error) {
+    res.status(error.statusCode || 400).json({ error: error.message || 'Backup konnte nicht hochgeladen oder wiederhergestellt werden.' });
   }
 });
 

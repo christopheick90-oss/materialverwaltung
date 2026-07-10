@@ -1,7 +1,7 @@
 {
   "name": "eckl-eco-technics-materialverwaltung",
-  "version": "3.0.0",
-  "description": "Eckl Eco Technics Materialverwaltung V3.0 - sauberer Material-CSV-Export mit Format",
+  "version": "3.3.0",
+  "description": "Eckl Eco Technics Materialverwaltung V3.3 - Lieferdatum und Wareneingang-Entnahme",
   "main": "server.js",
   "type": "commonjs",
   "author": "Eckl Eco Technics",

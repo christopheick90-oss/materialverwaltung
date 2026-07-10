@@ -1,5 +1,14 @@
-Eckl Lagerverwaltung v3.0 starten.
+Eckl Eco Technics - Materialverwaltung v3.3
 
-Änderung in v3.0:
-- Material-CSV enthält jetzt Material, Format, Bestand und KG-Preis.
-- Export bleibt sauber, kurz und Excel-freundlich.
+Start:
+1. npm install
+2. npm start
+3. Browser öffnen: http://localhost:4170
+
+Änderungen v3.3:
+- Laser-Bestellung ohne Lieferant/Werkszeugnis
+- Lieferant wird beim Bestellt-Schritt durch Büro/Chef/Admin aus Liste oder per Eingabe gesetzt
+- Laser/Büro/Chef/Admin können Resttafeln mit Format/Größe anlegen
+
+
+V3.3: Bestellungen werden nach Lieferdatum und Lieferant sortiert. Beim Bestellt-Melden wählt Büro/Chef/Admin das Lieferdatum. Das Bestelldatum bleibt sichtbar. Leere Wareneingangspositionen werden nach direkter Entnahme automatisch entfernt.

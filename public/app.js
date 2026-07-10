@@ -1,4 +1,4 @@
-const CLIENT_VERSION = '3.0';
+const CLIENT_VERSION = '3.3';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -1062,12 +1062,14 @@ function renderRoleTasks() {
 
 function renderMaterials() {
   const canCreate = state.permissions.canCreateMaterial;
+  const canCreateRest = state.permissions.canCreateRestMaterial;
   const canTableImport = currentUser && currentUser.role === 'ADMIN';
   const canExportMaterials = state.permissions.canExportMaterials;
   $('#materials').innerHTML = `
     <div class="searchbar"><strong>Suche</strong><input id="materialSearch" placeholder="Material, Stärke, Menge, Größe oder Regal suchen ..." value="${escapeHtml(materialFilter.text)}"></div>
     <div class="toolbar">
       ${canCreate ? '<button class="primary" onclick="openMaterialModal()">Material anlegen</button>' : ''}
+      ${canCreateRest ? '<button class="secondary" onclick="openRestMaterialModal()">Resttafel anlegen</button>' : ''}
       ${canTableImport ? '<button class="secondary" onclick="openPasteTableModal()">Tabelle einfügen</button>' : ''}
       ${canExportMaterials ? '<button class="secondary" onclick="exportVisibleMaterialsCsv()">Materialliste CSV</button>' : ''}
       ${state.permissions.canRequestOrder ? '<button class="secondary" onclick="openOrderModal()">Bestellung angeben</button>' : ''}
@@ -1952,6 +1954,52 @@ function orderCustomerKey(order) {
   return normalizeOrderCustomerKey(order && (order.supplierKey || order.supplierName || order.lieferant || order.customerKey || order.customerName || order.customer || order.kunde));
 }
 
+function supplierChoices(selected = '') {
+  const selectedName = normalizeOrderCustomerName(selected);
+  const names = new Map();
+  const add = (value) => {
+    const name = normalizeOrderCustomerName(value);
+    if (!name || /^ohne\s+lieferant$/i.test(name)) return;
+    names.set(name.toLowerCase(), name);
+  };
+  (state.orders || []).forEach(order => add(order && (order.supplierName || order.customerName || order.lieferant || order.kunde)));
+  (state.materials || []).forEach(material => add(material && material.supplier));
+  (state.writtenOffMaterials || []).forEach(item => add(item && (item.supplier || item.sourceCustomerName)));
+  if (selectedName && !/^ohne\s+lieferant$/i.test(selectedName)) add(selectedName);
+  return Array.from(names.values()).sort((a, b) => a.localeCompare(b, 'de'));
+}
+
+function supplierSelectOptions(selected = '') {
+  const selectedName = normalizeOrderCustomerName(selected);
+  const choices = supplierChoices(selectedName);
+  const hasSelected = choices.some(name => name.toLowerCase() === selectedName.toLowerCase());
+  const selectedIsCustom = selectedName && !/^ohne\s+lieferant$/i.test(selectedName) && !hasSelected;
+  return `<option value="" ${!selectedName || /^ohne\s+lieferant$/i.test(selectedName) ? 'selected' : ''}>Ohne Lieferant</option>${choices.map(name => `<option value="${escapeHtml(name)}" ${name.toLowerCase() === selectedName.toLowerCase() ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}<option value="__CUSTOM__" ${selectedIsCustom ? 'selected' : ''}>Lieferant selbst eingeben</option>`;
+}
+
+function supplierValueFromControls(selectId, inputId) {
+  const select = $('#'+selectId);
+  const input = $('#'+inputId);
+  if (!select) return '';
+  return select.value === '__CUSTOM__' ? (input ? input.value : '') : select.value;
+}
+
+function attachSupplierSelect(selectId, customRowId, inputId, selected = '') {
+  const select = $('#'+selectId);
+  const row = $('#'+customRowId);
+  const input = $('#'+inputId);
+  if (!select || !row) return;
+  const selectedName = normalizeOrderCustomerName(selected);
+  if (select.value === '__CUSTOM__' && input && selectedName && !/^ohne\s+lieferant$/i.test(selectedName)) input.value = selectedName;
+  const sync = () => {
+    const custom = select.value === '__CUSTOM__';
+    row.classList.toggle('hidden', !custom);
+    if (custom && input) setTimeout(() => input.focus(), 0);
+  };
+  select.addEventListener('change', sync);
+  sync();
+}
+
 
 function orderDayConfirmations(dateKey) {
   const groups = state.orderDayConfirmations || {};
@@ -2028,6 +2076,7 @@ function orderSearchText(order) {
     order.createdAt ? fmtDate(order.createdAt) : '',
     order.lastUpdate ? fmtDate(order.lastUpdate) : '',
     order.orderedAt ? fmtDate(order.orderedAt) : '',
+    order.deliveryDate ? fmtDateOnly(order.deliveryDate) : '',
     order.receivedAt ? fmtDate(order.receivedAt) : '',
     order.confirmation && order.confirmation.originalName,
     order.confirmation && order.confirmation.uploadedBy,
@@ -2054,7 +2103,16 @@ function filteredOrdersList(baseOrders) {
 }
 
 function orderSortDate(order) {
-  return order.orderedAt || order.createdAt || order.lastUpdate || '';
+  if (order && order.deliveryDate) return `${order.deliveryDate}T12:00:00`;
+  return order && (order.orderedAt || order.createdAt || order.lastUpdate) || '';
+}
+
+function orderDeliveryDateLabel(order) {
+  return order && order.deliveryDate ? fmtDateOnly(order.deliveryDate) : 'ohne Lieferdatum';
+}
+
+function inputDateToday() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function orderDateLabel(order) {
@@ -2165,7 +2223,7 @@ function renderOrdersGrouped(orders, withActions) {
     titleParts.push(`${customers.length} Lieferant(en)`);
     return `<div class="order-day-group">
       <div class="order-day-head">
-        <div><h3>Bestellungen vom ${orderDayLabel(group.dateKey)}</h3><div class="small muted">${titleParts.join(' · ')} zusammengefasst</div></div>
+        <div><h3>Lieferdatum ${orderDayLabel(group.dateKey)}</h3><div class="small muted">${titleParts.join(' · ')} nach Lieferdatum und Lieferant sortiert</div></div>
       </div>
       ${customers.map(customer => {
         const normalOrders = customer.orders.filter(o => o.storage !== 'KONSI');
@@ -2230,7 +2288,7 @@ function renderOrders() {
     </div>
     ${orderFilterPanel(incoming, filtered)}
     <div class="card">
-      <h2>Bestellungen nach Tag und Lieferant</h2>
+      <h2>Bestellungen nach Lieferdatum und Lieferant</h2>
       <div id="ordersResult">${filtered.length ? renderOrdersGrouped(filtered, true) : '<div class="empty">Keine Bestellung oder Lieferung gefunden.</div>'}</div>
     </div>
   `;
@@ -2250,10 +2308,10 @@ function renderOrdersTable(orders, withActions, options = {}) {
         ${orders.map(o => `
           <tr>
             <td>${o.directIncoming ? '<span class="badge green">Wareneingang</span>' : `${statusBadge(o.status)}${o.storage === 'KONSI' ? '<br><span class="badge red">Konsi</span>' : ''}${(o.manualOrder || o.manualRequest) ? '<br><span class="badge gray">Handeingabe</span>' : ''}`}</td>
-            <td>${showDateBeforeMaterial ? `<span class="badge gray">${escapeHtml(orderDayLabel(orderDayKey(o)))}</span><br>` : ''}<strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}${hideSupplierLine ? '' : `<div class="small muted">Lieferant: ${escapeHtml(orderCustomerName(o))}</div>`}<div class="small muted">${o.directIncoming ? 'Erfasst von' : (o.manualOrder ? 'Bestellung erfasst von' : (o.manualRequest ? 'Per Handeingabe angefragt von' : 'Angefragt von'))} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}${o.manualOrder ? '<div class="small muted">Bestellung per Handeingabe</div>' : ''}${o.manualRequest ? '<div class="small muted">Freie Materialanfrage</div>' : ''}${orderConfirmationLabel(o)}${orderPriceLine(o)}</td>
+            <td>${showDateBeforeMaterial ? `<span class="badge gray">Lieferdatum ${escapeHtml(orderDayLabel(orderDayKey(o)))}</span><br>` : ''}<strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong>${orderDimensionLine(o)}${hideSupplierLine ? '' : `<div class="small muted">Lieferant: ${escapeHtml(orderCustomerName(o))}</div>`}<div class="small muted">${o.directIncoming ? 'Erfasst von' : (o.manualOrder ? 'Bestellung erfasst von' : (o.manualRequest ? 'Per Handeingabe angefragt von' : 'Angefragt von'))} ${escapeHtml(o.requestedBy)} · ${fmtDate(o.createdAt)}</div>${o.directIncoming ? '<div class="small muted">ohne vorherige Bestellung</div>' : ''}${o.manualOrder ? '<div class="small muted">Bestellung per Handeingabe</div>' : ''}${o.manualRequest ? '<div class="small muted">Freie Materialanfrage</div>' : ''}${orderConfirmationLabel(o)}${orderPriceLine(o)}${o.deliveryDate ? `<div class="small muted">Lieferdatum: ${escapeHtml(fmtDateOnly(o.deliveryDate))}</div>` : ''}${o.orderedAt ? `<div class="small muted">Bestelldatum: ${escapeHtml(fmtDate(o.orderedAt))}</div>` : ''}</td>
             <td>${o.directIncoming ? `Wareneingang: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : `Anfrage: <strong>${orderQuantityLabel(o, 'request')}</strong>${o.orderedAmount ? `<br>Bestellt: <strong>${orderQuantityLabel(o, 'ordered')}</strong>` : ''}${(Number(o.receivedAmount)||Number(o.receivedSheets)) ? `<br>Geliefert: <strong>${orderQuantityLabel(o, 'received')}</strong>${orderDimensionLine(o)}${o.deliveredToShelf ? `<br><span class="small muted">Ablage: ${escapeHtml(o.deliveredToShelf)}</span>` : ''}` : ''}`}</td>
             <td class="order-note">${escapeHtml(o.note || '-')}</td>
-            <td>${orderFlow(o.status)}<div class="small muted">Letzte Änderung: ${fmtDate(o.lastUpdate)}</div>${o.status === 'ERLEDIGT' ? `<div class="small muted">Geliefert: ${fmtDate(o.receivedAt || o.lastUpdate)}</div>` : ''}</td>
+            <td>${orderFlow(o.status)}<div class="small muted">Letzte Änderung: ${fmtDate(o.lastUpdate)}</div>${o.orderedAt ? `<div class="small muted">Bestellt am: ${escapeHtml(fmtDate(o.orderedAt))}</div>` : ''}${o.deliveryDate ? `<div class="small muted">Lieferdatum: ${escapeHtml(fmtDateOnly(o.deliveryDate))}</div>` : ''}${o.status === 'ERLEDIGT' ? `<div class="small muted">Geliefert: ${fmtDate(o.receivedAt || o.lastUpdate)}</div>` : ''}</td>
             ${withActions ? `<td>${renderOrderActions(o)}</td>` : ''}
           </tr>
         `).join('')}
@@ -3129,7 +3187,10 @@ function renderSystemBackup() {
   $('#adminBackup').innerHTML = `
     ${renderSystemSubnav('adminBackup')}
     <div class="toolbar"><button class="primary" onclick="createBackupNow()">Backup erstellen</button><button class="secondary" onclick="loadState()">Aktualisieren</button></div>
-    <div class="card"><h2>Datensicherungen</h2><p class="muted">Vor Wiederherstellung wird automatisch nochmal eine Sicherung erstellt.</p>${renderBackupTable(backups)}</div>
+    <div class="split">
+      <div class="card"><h2>Backup hochladen / wiederherstellen</h2><p class="muted">Lädt eine zuvor heruntergeladene Backup-JSON-Datei wieder ein. Vor dem Überschreiben wird automatisch eine neue Sicherung erstellt.</p><input id="backupUploadFile" type="file" accept=".json,application/json"><div class="modal-footer"><button class="secondary danger" onclick="uploadBackupRestore()">Backup hochladen und wiederherstellen</button></div><p class="muted">Hinweis: Nur Backup-Dateien aus dieser Materialverwaltung verwenden.</p></div>
+      <div class="card"><h2>Datensicherungen</h2><p class="muted">Vor Wiederherstellung wird automatisch nochmal eine Sicherung erstellt.</p>${renderBackupTable(backups)}</div>
+    </div>
   `;
 }
 
@@ -3301,7 +3362,7 @@ window.openSystemMaterialEditModal = (materialId) => {
         <h2>Materialdaten korrigieren</h2>
         <p>Bestand bleibt unverändert. Nur Stammdaten werden korrigiert.</p>
       </div>
-      <span class="modal-version-pill">v1.3</span>
+      <span class="modal-version-pill">v3.2</span>
     </div>
     <div class="modal-subtitle-card"><strong>${escapeHtml(materialTitle(data))}</strong><br>${stockText}<br><span>Stärke, Sonderformat und Schreibweise werden automatisch vereinheitlicht, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</span></div>
     <form id="adminMaterialEditForm" class="form-grid material-input-form">
@@ -3385,7 +3446,7 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
         <h2>${isEdit ? 'Material bearbeiten' : 'Material anlegen'}</h2>
         <p>${isEdit ? 'Daten sauber korrigieren, Bestand bleibt kontrolliert.' : 'Neues Material geordnet anlegen.'}</p>
       </div>
-      <span class="modal-version-pill">v1.3</span>
+      <span class="modal-version-pill">v3.2</span>
     </div>
     <div class="modal-subtitle-card"><strong>Hinweis:</strong> Stärke, Sonderformat und Schreibweise werden automatisch einheitlich gespeichert, z. B. <b>AlMg3</b>, <b>2,50 mm</b> und <b>1000x1000</b>.</div>
     <form id="materialForm" class="form-grid material-input-form">
@@ -3453,6 +3514,67 @@ window.openMaterialModal = (materialId = '', presetStorage = '') => {
       closeModal();
       showToast(isEdit ? 'Material gespeichert' : 'Material angelegt', payload.name);
       await loadState(true);
+    } catch (error) { showToast('Fehler', error.message); }
+  });
+};
+
+window.openRestMaterialModal = () => {
+  if (!state.permissions.canCreateRestMaterial) return showToast('Keine Berechtigung', 'Resttafeln dürfen Laser, Büro, Chef und Admin anlegen.');
+  openModal(`
+    <div class="modal-titlebar material-input-titlebar">
+      <div>
+        <span class="modal-kicker">Resttafel</span>
+        <h2>Resttafel anlegen</h2>
+        <p>Für Restmaterial mit eigener Größe und Lagerplatz.</p>
+      </div>
+      <span class="modal-version-pill">v3.2</span>
+    </div>
+    <div class="modal-subtitle-card"><strong>Hinweis:</strong> Resttafeln werden nicht als Bestellung oder Mindestbestand gewertet.</div>
+    <form id="restMaterialForm" class="form-grid material-input-form">
+      <div class="form-panel form-full"><label>Material</label><input id="restMatName" required placeholder="z. B. S235, 1.4404, AlMg3"></div>
+      <div class="form-panel"><label>Stärke</label><input id="restMatThickness" placeholder="z. B. 3 oder 3,00 mm" inputmode="decimal"><div id="restMatThicknessPreview" class="thickness-preview"></div></div>
+      <div class="form-panel"><label>Format / Größe</label><select id="restMatFormat">${formatOptions('', true)}</select><div class="format-hint">Standardformat wählen oder Sonderformat eintragen.</div></div>
+      <div id="restMatCustomFormatRow" class="form-panel hidden"><label>Sonderformat</label><input id="restMatCustomFormat" placeholder="z. B. 1250 x 650" inputmode="numeric"><div id="restMatCustomFormatPreview" class="thickness-preview"></div></div>
+      <div class="form-panel"><label>Menge / Tafeln</label><input id="restMatStock" type="number" min="1" step="1" value="1"></div>
+      <div class="form-panel"><label>Lagerplatz</label><select id="restMatShelf">${shelfOptions('Regal 1')}</select></div>
+      <div class="form-panel"><label>Teilenr. optional</label><input id="restMatArticleNumber" placeholder="optional"></div>
+      <div class="form-full"><label>Bemerkung</label><textarea id="restMatNote" placeholder="z. B. Zuschnittrest, Rest von Auftrag ..."></textarea></div>
+      <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Resttafel anlegen</button></div>
+    </form>
+  `);
+  attachAutoCase('#restMatName', normalizeMaterialCaseInput);
+  attachAutoCase('#restMatArticleNumber', normalizeArticleNumberInput);
+  attachThicknessAutoFormat('#restMatThickness', '#restMatThicknessPreview');
+  attachFormatControls('#restMatFormat', '#restMatCustomFormatRow', '#restMatCustomFormat', '#restMatCustomFormatPreview');
+  $('#restMaterialForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payload = {
+      name: normalizeMaterialCaseInput($('#restMatName').value),
+      category: 'Resttafeln',
+      type: 'Resttafel',
+      thickness: normalizeThicknessInput($('#restMatThickness').value),
+      format: readFormatControls('#restMatFormat', '#restMatCustomFormat'),
+      unit: 'Tafeln',
+      stock: Number($('#restMatStock').value || 1),
+      packageStock: 0,
+      sheetStock: Number($('#restMatStock').value || 1),
+      packageNumbers: [],
+      minStock: 0,
+      storage: 'HAUPTLAGER',
+      shelf: $('#restMatShelf').value,
+      compartment: '',
+      supplier: '',
+      articleNumber: normalizeArticleNumberInput($('#restMatArticleNumber').value),
+      rest: true,
+      note: $('#restMatNote').value
+    };
+    try {
+      await saveMaterialRequest('/api/materials/rest', 'POST', payload);
+      closeModal();
+      showToast('Resttafel angelegt', `${payload.name} · ${formatDisplayValue(payload.format)}`);
+      await loadState(true);
+      currentPage = 'materials';
+      renderCurrentPage();
     } catch (error) { showToast('Fehler', error.message); }
   });
 };
@@ -3778,7 +3900,7 @@ window.deleteNonOrderMaterial = async (materialId) => {
         <h2>Eintrag entfernen</h2>
         <p>Nur möglich bei Bestand 0 und ohne offene Bestellung.</p>
       </div>
-      <span class="modal-version-pill">v1.3</span>
+      <span class="modal-version-pill">v3.2</span>
     </div>
     <div class="modal-subtitle-card delete-warning-card">
       <strong>${escapeHtml(title)}</strong><br>
@@ -4019,6 +4141,7 @@ window.openUndoDeliveryModal = (orderId) => {
 window.openOrderModal = (materialId = '', initialMode = '') => {
   const canRequest = Boolean(state.permissions.canRequestOrder);
   const canDirectIncoming = Boolean(state.permissions.canReceiveDelivery);
+  const canSetOrderDetails = Boolean(state.permissions.canMarkOrdered);
   if (!canRequest && !canDirectIncoming) return showToast('Keine Berechtigung', 'Diese Rolle darf keine Bestell- oder Wareneingänge erfassen.');
 
   const availableModes = [];
@@ -4043,9 +4166,9 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
       <div class="form-full"><label>Art des Vorgangs</label><select id="orderCaptureMode">${modeOptions}</select></div>
 
       <div class="form-full capture-section" id="orderRequestSection">
-        <div class="notice"><strong id="orderRequestTitle">Bestellanforderung</strong><br><span id="orderRequestNotice">Jede Rolle kann hier eine Anfrage erfassen. Das Material kann aus der Liste gewählt oder frei eingetippt werden.</span></div>
+        <div class="notice"><strong id="orderRequestTitle">Bestellanforderung</strong><br><span id="orderRequestNotice">Laser meldet nur Material und Menge. Lieferant und Werkszeugnis ergänzt später Büro/Chef beim Bestellen oder Wareneingang.</span></div>
       </div>
-      <div class="form-full capture-section" id="orderCustomerSection"><label>Lieferant</label><input id="orderCustomer" placeholder="z. B. Lieferant / leer = Ohne Lieferant"><div class="format-hint">Danach werden Bestellungen und PDFs pro Lieferant gruppiert.</div></div>
+      <div class="form-full capture-section ${canSetOrderDetails ? '' : 'hidden'}" id="orderCustomerSection"><label>Lieferant</label><input id="orderCustomer" placeholder="z. B. Lieferant / leer = Ohne Lieferant"><div class="format-hint">Danach werden Bestellungen und PDFs pro Lieferant gruppiert.</div></div>
       <div class="capture-section" id="orderInputModeSection"><label>Materialangabe</label><select id="orderInputMode"><option value="EXISTING">Material aus Liste</option><option value="MANUAL">Material frei eingeben</option></select></div>
       <div class="form-full capture-section" id="orderMaterialSection"><label id="orderMaterialLabel">Material aus Liste</label><select id="orderMaterial" data-normal-options="${escapeHtml(orderOptions)}" data-konsi-options="${escapeHtml(konsiOrderOptions)}">${orderOptions}</select></div>
       <div class="capture-section hidden" id="orderManualNameSection"><label>Material</label><input id="orderManualName" placeholder="z. B. 1.4571 oder AlMg3"></div>
@@ -4053,7 +4176,7 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
       <div class="capture-section" id="orderAmountSection"><label id="orderAmountLabel">Menge</label><input id="orderAmount" type="number" min="1" step="1" value="1"></div>
       <div class="capture-section" id="orderUnitSection"><label>Einheit</label><select id="orderUnit"><option value="PAKET">Paket(e)</option><option value="TAFEL">Tafel(n)</option></select></div>
       ${canSeePrices() ? `<div class="capture-section" id="orderKgPriceSection"><label>KG-Preis €/kg</label><input id="orderKgPrice" type="number" min="0" step="0.01" placeholder="z. B. 2,35"><div class="format-hint">Nur Büro/Chef.</div></div>` : ''}
-      <div class="form-full capture-section" id="orderCertificateSection"><label>Werkszeugnis PDF optional</label><input id="orderCertificate" type="file" accept="application/pdf,.pdf"><div class="format-hint">Wird direkt beim Material abgelegt. Bei freier Materialanfrage wird es beim späteren Wareneingang mit übernommen.</div></div>
+      <div class="form-full capture-section ${canSetOrderDetails ? '' : 'hidden'}" id="orderCertificateSection"><label>Werkszeugnis PDF optional</label><input id="orderCertificate" type="file" accept="application/pdf,.pdf"><div class="format-hint">Wird direkt beim Material abgelegt. Bei freier Materialanfrage wird es beim späteren Wareneingang mit übernommen.</div></div>
       <div class="form-full capture-section" id="orderNoteSection"><label id="orderNoteLabel">Hinweis</label><textarea id="orderNote" placeholder="z. B. Lieferant, dringend, Rückfrage ..."></textarea></div>
 
       <div class="form-full capture-section hidden" id="directIncomingSection">
@@ -4151,7 +4274,9 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
     $('#orderRequestTitle').textContent = isKonsiOrder ? 'Konsi-Bestellung' : 'Bestellanforderung';
     $('#orderRequestNotice').textContent = isKonsiOrder
       ? 'Konsi wird als eigene Anfrage geführt und bleibt in der Bestellübersicht getrennt von normalen Bestellungen.'
-      : 'Jede Rolle kann hier eine Anfrage erfassen. Das Material kann aus der Liste gewählt oder frei eingetippt werden.';
+      : (canSetOrderDetails ? 'Büro/Chef kann Lieferant und Werkszeugnis direkt ergänzen. Laser meldet nur Material und Menge.' : 'Laser meldet nur Material und Menge. Lieferant und Werkszeugnis ergänzt später Büro/Chef.');
+    if ($('#orderCustomerSection')) $('#orderCustomerSection').classList.toggle('hidden', isIncoming || !canSetOrderDetails);
+    if ($('#orderCertificateSection')) $('#orderCertificateSection').classList.toggle('hidden', isIncoming || !canSetOrderDetails);
     $('#orderCaptureHint').textContent = isIncoming
       ? 'Wareneingang ohne Bestellung wird sofort als gelieferter Eingang gebucht.'
       : (isKonsiOrder ? 'Konsi-Bestellung wird als separate offene Anfrage gespeichert.' : 'Bestellanforderung wird als offene Anfrage für Büro/Chef gespeichert.');
@@ -4209,7 +4334,7 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
         if (manual && !normalizeThicknessInput($('#orderManualThickness').value).trim()) return showToast('Stärke fehlt', 'Bitte Stärke eintragen.');
         const payload = {
           materialId: manual ? '' : $('#orderMaterial').value,
-          customerName: $('#orderCustomer').value,
+          customerName: canSetOrderDetails ? $('#orderCustomer').value : '',
           name: manual ? $('#orderManualName').value : '',
           thickness: manual ? normalizeThicknessInput($('#orderManualThickness').value) : '',
           amount: unit === 'PAKET' ? qty : 0,
@@ -4219,7 +4344,7 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
           konsiOrder: konsiMode,
           kgPrice: canSeePrices() && $('#orderKgPrice') ? $('#orderKgPrice').value : '',
           note: $('#orderNote').value,
-          ...(await certificatePayloadFromInput('orderCertificate'))
+          ...(canSetOrderDetails ? await certificatePayloadFromInput('orderCertificate') : {})
         };
         await api('/api/orders', { method: 'POST', body: JSON.stringify(payload) });
         showToast('Bestellung gesendet', konsiMode ? 'Die Konsi-Anfrage wurde separat gespeichert.' : (manual ? 'Die freie Materialanfrage wurde an Büro/Chef übertragen.' : 'Die Meldung wurde an Büro/Chef übertragen.'));
@@ -4238,17 +4363,20 @@ window.openOrderModal = (materialId = '', initialMode = '') => {
 window.openOrderSupplierModal = (orderId) => {
   const o = state.orders.find(x => x.id === orderId);
   if (!o) return showToast('Bestellung fehlt', 'Der Vorgang wurde nicht gefunden.');
+  const currentSupplier = orderCustomerName(o);
   openModal(`
     <h2>Lieferant ändern</h2>
-    <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Aktuell: ${escapeHtml(orderCustomerName(o))}</span></p>
+    <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Aktuell: ${escapeHtml(currentSupplier)}</span></p>
     <form id="supplierChangeForm" class="form-grid">
-      <div class="form-full"><label>Lieferant</label><input id="supplierChangeName" value="${escapeHtml(orderCustomerName(o))}" placeholder="z. B. Lieferant / leer = Ohne Lieferant"><div class="format-hint">Die Bestellung wird danach automatisch in die passende Lieferantengruppe verschoben.</div></div>
+      <div class="form-full"><label>Lieferant aus Liste</label><select id="supplierChangeSelect">${supplierSelectOptions(currentSupplier)}</select><div class="format-hint">Bestehenden Lieferanten wählen oder selbst eingeben.</div></div>
+      <div class="form-full hidden" id="supplierChangeCustomRow"><label>Lieferant selbst eingeben</label><input id="supplierChangeName" value="${escapeHtml(currentSupplier)}" placeholder="z. B. Thyssen, Klöckner, ..."></div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Speichern</button></div>
     </form>
   `);
+  attachSupplierSelect('supplierChangeSelect', 'supplierChangeCustomRow', 'supplierChangeName', currentSupplier);
   $('#supplierChangeForm').addEventListener('submit', async (event) => {
     event.preventDefault();
-    await updateOrder(orderId, 'SUPPLIER', null, o.note || '', o.orderedSheets || 0, '', $('#supplierChangeName').value);
+    await updateOrder(orderId, 'SUPPLIER', null, o.note || '', o.orderedSheets || 0, '', supplierValueFromControls('supplierChangeSelect', 'supplierChangeName'));
     closeModal();
   });
 };
@@ -4260,16 +4388,19 @@ window.openOrderedModal = (orderId) => {
     <h2>Als bestellt markieren</h2>
     <p><strong class="order-material-title">${escapeHtml(orderMaterialTitle(o))}</strong><span class="muted">Anfrage: ${orderQuantityLabel(o, 'request')}</span></p>
     <form id="orderedForm" class="form-grid">
-      <div class="form-full"><label>Lieferant</label><input id="orderedCustomer" value="${escapeHtml(orderCustomerName(o))}" placeholder="z. B. Lieferant"><div class="format-hint">Änderung sortiert die Bestellung in die passende Lieferantengruppe.</div></div>
+      <div class="form-full"><label>Lieferant aus Liste</label><select id="orderedSupplierSelect">${supplierSelectOptions(orderCustomerName(o))}</select><div class="format-hint">Bestehenden Lieferanten wählen oder neuen Lieferanten selbst eingeben.</div></div>
+      <div class="form-full hidden" id="orderedSupplierCustomRow"><label>Lieferant selbst eingeben</label><input id="orderedCustomer" value="${escapeHtml(orderCustomerName(o))}" placeholder="z. B. Thyssen, Klöckner, ..."></div>
+      <div><label>Lieferdatum</label><input id="orderedDeliveryDate" type="date" value="${escapeHtml(o.deliveryDate || inputDateToday())}" required><div class="format-hint">Danach wird die Bestellung in der Übersicht sortiert.</div></div>
       <div><label>Bestellte Pakete</label><input id="orderedAmount" type="number" min="${o.storage === 'KONSI' ? '1' : '0'}" step="1" value="${Number(o.requestedAmount || 0)}"></div>${o.storage !== 'KONSI' ? `<div><label>Bestellte Tafeln</label><input id="orderedSheets" type="number" min="0" step="1" value="${Number(o.requestedSheets || 0)}"></div>` : ''}
       ${canSeePrices() && o.storage !== 'KONSI' ? `<div><label>KG-Preis €/kg</label><input id="orderedKgPrice" type="number" min="0" step="0.01" value="${o.kgPrice ?? material?.kgPrice ?? ''}" placeholder="z. B. 2,35"><div class="format-hint">Nur sichtbar für Büro/Chef.</div></div>` : ''}
       <div class="form-full"><label>Hinweis vom Büro</label><textarea id="orderedNote" placeholder="z. B. Liefertermin, Lieferant oder Rückfrage ...">${escapeHtml(o.note || '')}</textarea></div>
       <div class="modal-footer form-full"><button type="button" class="ghost" onclick="closeModal()">Abbrechen</button><button class="primary" type="submit">Bestellt melden</button></div>
     </form>
   `);
+  attachSupplierSelect('orderedSupplierSelect', 'orderedSupplierCustomRow', 'orderedCustomer', orderCustomerName(o));
   $('#orderedForm').addEventListener('submit', async (event) => {
     event.preventDefault();
-    await updateOrder(orderId, 'ORDERED', $('#orderedAmount').value, $('#orderedNote').value, o.storage !== 'KONSI' ? $('#orderedSheets').value : 0, canSeePrices() && $('#orderedKgPrice') ? $('#orderedKgPrice').value : '', $('#orderedCustomer').value);
+    await updateOrder(orderId, 'ORDERED', $('#orderedAmount').value, $('#orderedNote').value, o.storage !== 'KONSI' ? $('#orderedSheets').value : 0, canSeePrices() && $('#orderedKgPrice') ? $('#orderedKgPrice').value : '', supplierValueFromControls('orderedSupplierSelect', 'orderedCustomer'), $('#orderedDeliveryDate').value);
     closeModal();
   });
 };
@@ -4561,10 +4692,11 @@ window.openEditDirectIncomingModal = (orderId) => {
   });
 };
 
-window.updateOrder = async (orderId, action, orderedAmount = null, note = '', orderedSheets = 0, kgPrice = '', customerName = undefined) => {
+window.updateOrder = async (orderId, action, orderedAmount = null, note = '', orderedSheets = 0, kgPrice = '', customerName = undefined, deliveryDate = undefined) => {
   try {
     const payload = { action, orderedAmount, orderedSheets, note, kgPrice };
     if (customerName !== undefined) { payload.customerName = customerName; payload.supplierName = customerName; }
+    if (deliveryDate !== undefined) payload.deliveryDate = deliveryDate;
     await api(`/api/orders/${orderId}`, { method: 'PATCH', body: JSON.stringify(payload) });
     showToast('Bestellung aktualisiert', 'Der neue Status wurde an alle Arbeitsplätze übertragen.');
     await loadState(true);
@@ -4592,6 +4724,22 @@ window.restoreBackup = async (file) => {
     await api(`/api/admin/backups/${encodeURIComponent(file)}/restore`, { method: 'POST' });
     showToast('Backup wiederhergestellt', 'Daten wurden aus der Sicherung übernommen.');
     await loadState(true);
+  } catch (error) { showToast('Fehler', error.message); }
+};
+
+window.uploadBackupRestore = async () => {
+  const input = $('#backupUploadFile');
+  const file = input && input.files && input.files[0];
+  if (!file) return showToast('Keine Datei', 'Bitte zuerst eine Backup-JSON-Datei auswählen.');
+  if (!String(file.name || '').toLowerCase().endsWith('.json')) return showToast('Falsche Datei', 'Bitte eine .json Backup-Datei auswählen.');
+  if (!confirm(`Backup wirklich hochladen und wiederherstellen?\n\n${file.name}\n\nDer aktuelle Stand wird vorher automatisch gesichert.`)) return;
+  try {
+    const content = await file.text();
+    const data = await api('/api/admin/backups/upload-restore', { method: 'POST', body: JSON.stringify({ fileName: file.name, content }) });
+    showToast('Backup wiederhergestellt', `Eingespielt: ${data.restoredFrom && data.restoredFrom.file ? data.restoredFrom.file : file.name}`);
+    await loadState(true);
+    currentPage = 'adminBackup';
+    renderCurrentPage();
   } catch (error) { showToast('Fehler', error.message); }
 };
 
